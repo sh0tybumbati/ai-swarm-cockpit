@@ -13,12 +13,14 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from agents import AGENTS
-from orchestrator import OUTPUT_BASE, SwarmOrchestrator, list_output_files, _safe_name
+from orchestrator import (OUTPUT_BASE, SwarmOrchestrator,
+                          list_output_files, load_context, save_context,
+                          _safe_name)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 logger = logging.getLogger("cockpit")
 
-app = FastAPI(title="Panoptic AI Swarm Cockpit", version="1.1.0")
+app = FastAPI(title="Panoptic AI Swarm Cockpit", version="1.2.0")
 orchestrator = SwarmOrchestrator()
 
 FRONTEND = Path(__file__).parent.parent / "frontend"
@@ -66,18 +68,7 @@ async def ws_endpoint(websocket: WebSocket, channel: str):
         await orchestrator.disconnect(channel, websocket)
 
 
-# ── Swarm API ──────────────────────────────────────────────────────────────────
-
-@app.get("/models")
-async def list_models():
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        try:
-            resp   = await client.get("http://localhost:11434/api/tags")
-            models = [m["name"] for m in resp.json().get("models", [])]
-            return {"models": models}
-        except Exception as exc:
-            return {"models": [], "error": str(exc)}
-
+# ── Swarm control ──────────────────────────────────────────────────────────────
 
 @app.post("/broadcast")
 async def broadcast(payload: dict):
@@ -85,9 +76,18 @@ async def broadcast(payload: dict):
     project = (payload.get("project") or "New Project").strip()
     if not prompt:
         return JSONResponse({"error": "prompt is required"}, status_code=400)
-    asyncio.create_task(orchestrator.run_swarm_loop(prompt, project))
+    task = asyncio.create_task(orchestrator.run_swarm_loop(prompt, project))
+    orchestrator._active_task = task
     return {"status": f"Swarm loop initiated: {prompt[:60]}"}
 
+
+@app.post("/stop")
+async def stop_loop():
+    await orchestrator.stop()
+    return {"status": "stopped"}
+
+
+# ── Agent config & solo run ────────────────────────────────────────────────────
 
 @app.get("/agents")
 async def get_agents():
@@ -104,37 +104,70 @@ async def update_agent(agent_id: str, config: dict):
     return {"status": "updated", "agent": AGENTS[agent_id]}
 
 
-# ── Output files API ───────────────────────────────────────────────────────────
+@app.post("/agents/{agent_id}/run")
+async def run_single_agent(agent_id: str, payload: dict):
+    if agent_id not in AGENTS:
+        raise HTTPException(404, "Agent not found")
+    prompt  = (payload.get("prompt") or "").strip()
+    project = (payload.get("project") or "New Project").strip()
+    if not prompt:
+        return JSONResponse({"error": "prompt is required"}, status_code=400)
+    task = asyncio.create_task(orchestrator.run_single_agent(agent_id, prompt, project))
+    orchestrator._active_task = task
+    return {"status": f"{agent_id} solo run started"}
+
+
+# ── Models ─────────────────────────────────────────────────────────────────────
+
+@app.get("/models")
+async def list_models():
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            resp   = await client.get("http://localhost:11434/api/tags")
+            models = [m["name"] for m in resp.json().get("models", [])]
+            return {"models": models}
+        except Exception as exc:
+            return {"models": [], "error": str(exc)}
+
+
+# ── Project context ────────────────────────────────────────────────────────────
+
+@app.get("/context/{project}")
+async def get_context(project: str):
+    content = load_context(project)
+    return {"project": project, "context": content, "exists": bool(content)}
+
+
+@app.post("/context/{project}")
+async def update_context_endpoint(project: str, payload: dict):
+    content = payload.get("content", "")
+    proj_dir = OUTPUT_BASE / _safe_name(project)
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "context.md").write_text(content, encoding="utf-8")
+    return {"status": "saved"}
+
+
+# ── Output files ───────────────────────────────────────────────────────────────
 
 @app.get("/files/{project}")
 async def get_project_files(project: str):
-    files = list_output_files(project)
-    return {"project": project, "files": files}
+    return {"project": project, "files": list_output_files(project)}
 
 
 @app.get("/files/{project}/{filename}")
 async def download_file(project: str, filename: str):
-    # Sanitize: strip any directory components to prevent path traversal
     safe_file = Path(filename).name
     proj_dir  = OUTPUT_BASE / _safe_name(project)
     filepath  = proj_dir / safe_file
-
     if not filepath.exists() or not filepath.is_file():
         raise HTTPException(404, "File not found")
-
-    media = "text/plain"
-    if safe_file.endswith(".html"):
-        media = "text/html"
-    elif safe_file.endswith(".css"):
-        media = "text/css"
-    elif safe_file.endswith((".js", ".ts")):
-        media = "application/javascript"
-    elif safe_file.endswith(".json"):
-        media = "application/json"
-
+    media_types = {".html": "text/html", ".css": "text/css",
+                   ".js": "application/javascript", ".ts": "application/javascript",
+                   ".json": "application/json"}
+    media = media_types.get(filepath.suffix, "text/plain")
     return FileResponse(filepath, media_type=media, filename=safe_file)
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agents": list(AGENTS.keys())}
+    return {"status": "ok", "version": "1.2.0", "agents": list(AGENTS.keys())}

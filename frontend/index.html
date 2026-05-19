@@ -16,7 +16,7 @@
         <div class="agent-id"><span class="cuneiform-glyph">𒀭</span> AGENT <span class="num">01</span></div>
         <div class="agent-deity">AN</div>
         <div class="agent-role">Engine Architect</div>
-        <div class="agent-model" id="model-label-agent1">Qwen-2.5-Coder-14B</div>
+        <div class="agent-model" id="model-label-agent1">Qwen-2.5-Coder-14B <span class="model-dot" id="mdot-agent1" title="Model status">●</span></div>
         <div class="agent-status-row">
           <span class="led" id="led-agent1"></span>
           <span class="led-label" id="status-agent1">IDLE</span>
@@ -26,7 +26,7 @@
     </div>
 
     <div class="cli-block a1-cli">
-      <div class="cli-header">𒀭 AGT-01 ▸ AN — ENGINE ARCHITECT</div>
+      <div class="cli-header">𒀭 AGT-01 ▸ AN — ENGINE ARCHITECT<button class="fire-btn" onclick="fireAgent('agent1')" title="Fire AN solo">▶</button></div>
       <div class="cli-output" id="stream-agent1"></div>
     </div>
 
@@ -44,7 +44,7 @@
 
     <!-- ══ AGENT 2: ENLIL — The Renderer (Top-Right) ══ -->
     <div class="cli-block a2-cli">
-      <div class="cli-header">𒂗𒍪 AGT-02 ▸ ENLIL — THE RENDERER</div>
+      <div class="cli-header">𒂗𒍪 AGT-02 ▸ ENLIL — THE RENDERER<button class="fire-btn" onclick="fireAgent('agent2')" title="Fire ENLIL solo">▶</button></div>
       <div class="cli-output" id="stream-agent2"></div>
     </div>
 
@@ -54,7 +54,7 @@
         <div class="agent-id"><span class="cuneiform-glyph">𒂗𒍪</span> AGENT <span class="num">02</span></div>
         <div class="agent-deity">ENLIL</div>
         <div class="agent-role">The Renderer</div>
-        <div class="agent-model" id="model-label-agent2">DeepSeek-Coder-8B</div>
+        <div class="agent-model" id="model-label-agent2">DeepSeek-Coder-8B <span class="model-dot" id="mdot-agent2" title="Model status">●</span></div>
         <div class="agent-status-row">
           <span class="led" id="led-agent2"></span>
           <span class="led-label" id="status-agent2">IDLE</span>
@@ -72,6 +72,7 @@
         <button id="files-btn" onclick="openFilesModal()" title="Browse generated output files">
           𒁹 FILES <span id="files-badge" class="files-badge" style="display:none">0</span>
         </button>
+        <button id="auto-refresh-btn" onclick="toggleAutoRefresh()" title="Auto-refresh preview on file save" class="ar-off">↺ AUTO</button>
       </div>
       <iframe id="preview-frame" src="about:blank"
         sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
@@ -84,7 +85,7 @@
         <div class="agent-id"><span class="cuneiform-glyph">𒂗𒆳</span> AGENT <span class="num">03</span></div>
         <div class="agent-deity">ENKI</div>
         <div class="agent-role">DOM & Input Bridge</div>
-        <div class="agent-model" id="model-label-agent3">Qwen-2.5-Coder-7B</div>
+        <div class="agent-model" id="model-label-agent3">Qwen-2.5-Coder-7B <span class="model-dot" id="mdot-agent3" title="Model status">●</span></div>
         <div class="agent-status-row">
           <span class="led" id="led-agent3"></span>
           <span class="led-label" id="status-agent3">IDLE</span>
@@ -94,13 +95,13 @@
     </div>
 
     <div class="cli-block a3-cli">
-      <div class="cli-header">𒂗𒆳 AGT-03 ▸ ENKI — DOM & INPUT BRIDGE</div>
+      <div class="cli-header">𒂗𒆳 AGT-03 ▸ ENKI — DOM & INPUT BRIDGE<button class="fire-btn" onclick="fireAgent('agent3')" title="Fire ENKI solo">▶</button></div>
       <div class="cli-output" id="stream-agent3"></div>
     </div>
 
     <!-- ══ AGENT 4: ENZU — The Sentinel (Bottom-Right) ══ -->
     <div class="cli-block a4-cli">
-      <div class="cli-header">𒂗𒍪 AGT-04 ▸ ENZU — THE SENTINEL</div>
+      <div class="cli-header">𒂗𒍪 AGT-04 ▸ ENZU — THE SENTINEL<button class="fire-btn" onclick="fireAgent('agent4')" title="Fire ENZU solo">▶</button></div>
       <div class="cli-output" id="stream-agent4"></div>
     </div>
 
@@ -110,7 +111,7 @@
         <div class="agent-id"><span class="cuneiform-glyph">𒂗𒍪</span> AGENT <span class="num">04</span></div>
         <div class="agent-deity">ENZU</div>
         <div class="agent-role">The Sentinel</div>
-        <div class="agent-model" id="model-label-agent4">Mistral-7B-v0.3</div>
+        <div class="agent-model" id="model-label-agent4">Mistral-7B-v0.3 <span class="model-dot" id="mdot-agent4" title="Model status">●</span></div>
         <div class="agent-status-row">
           <span class="led" id="led-agent4"></span>
           <span class="led-label" id="status-agent4">IDLE</span>
@@ -124,12 +125,13 @@
       <div class="prompt-label">𒀭 BROADCAST COMMAND TO SWARM 𒀭</div>
       <form id="cmd-form" onsubmit="sendCommand(event)">
         <input type="text" id="cmd-input"
-          placeholder="[YOU] : Enter feature request for the swarm..."
+          placeholder="[YOU] : Enter feature request... (↑↓ history)"
           autocomplete="off" />
         <input type="text" id="project-input"
           placeholder="Project name"
           value="ENMERKAR" />
         <button type="submit" id="send-btn">▶ SUBMIT</button>
+        <button type="button" id="stop-btn" onclick="stopLoop()" style="display:none">⏹ STOP</button>
       </form>
     </div>
 

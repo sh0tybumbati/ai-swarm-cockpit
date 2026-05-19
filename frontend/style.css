@@ -639,6 +639,87 @@ body {
 .files-table a:hover { background: rgba(0,217,245,.15); box-shadow: var(--glow-cyan); }
 
 /* ═══════════════════════════════════════════════════════
+   STOP BUTTON
+═══════════════════════════════════════════════════════ */
+#stop-btn {
+  background: rgba(255, 68, 0, 0.15);
+  border: 1px solid #ff4400;
+  color: #ff4400;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 5px 12px;
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  transition: all .15s;
+  animation: stop-pulse 1.5s ease-in-out infinite;
+}
+#stop-btn:hover {
+  background: rgba(255, 68, 0, 0.35);
+  box-shadow: 0 0 10px rgba(255,68,0,.4);
+}
+@keyframes stop-pulse {
+  0%,100% { box-shadow: 0 0 4px rgba(255,68,0,.3); }
+  50%      { box-shadow: 0 0 10px rgba(255,68,0,.6); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   PER-AGENT FIRE BUTTONS
+═══════════════════════════════════════════════════════ */
+.cli-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fire-btn {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  font-size: 8px;
+  padding: 1px 5px;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: all .15s;
+  flex-shrink: 0;
+  margin-left: 6px;
+  font-family: var(--mono);
+  line-height: 1;
+}
+.fire-btn:hover {
+  opacity: 1;
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* ═══════════════════════════════════════════════════════
+   AUTO-REFRESH TOGGLE
+═══════════════════════════════════════════════════════ */
+.ar-off {
+  opacity: 0.4;
+  border-color: var(--text-dim) !important;
+  color: var(--text-dim) !important;
+}
+.ar-on {
+  opacity: 1;
+  border-color: var(--a3) !important;
+  color: var(--a3) !important;
+  box-shadow: 0 0 6px rgba(61,255,208,.3) !important;
+  background: rgba(61,255,208,.1) !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   MODEL STATUS DOTS
+═══════════════════════════════════════════════════════ */
+.model-dot {
+  font-size: 7px;
+  color: var(--text-dim);
+  transition: color .3s;
+}
+.model-dot.ok      { color: #39ff14; filter: drop-shadow(0 0 3px #39ff14); }
+.model-dot.missing { color: #ffb74d; }
+.model-dot.offline { color: var(--text-dim); }
+
+/* ═══════════════════════════════════════════════════════
    SCANLINE + VIGNETTE
 ═══════════════════════════════════════════════════════ */
 body::after {

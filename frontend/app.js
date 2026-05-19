@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════
-//  PANOPTIC AI SWARM COCKPIT — Frontend Client
+//  PANOPTIC AI SWARM COCKPIT — Frontend Client v1.2
 // ══════════════════════════════════════════════════════
 
 const WS_BASE  = `ws://${location.host}`;
@@ -8,10 +8,16 @@ const CHANNELS = ['agent1', 'agent2', 'agent3', 'agent4', 'console'];
 
 const sockets = {};
 let currentModalAgent = null;
-let currentProject    = 'New Project';
+let currentProject    = 'ENMERKAR';
 let savedFilesCount   = 0;
+let loopRunning       = false;
+let autoRefresh       = false;
 
-// ── WebSocket Manager ──────────────────────────────────
+// ── Command history ────────────────────────────────────
+let cmdHistory  = JSON.parse(localStorage.getItem('swarm_cmd_history') || '[]');
+let historyIdx  = -1;
+
+// ── WebSocket manager ──────────────────────────────────
 
 function connect(channel) {
   const ws = new WebSocket(`${WS_BASE}/ws/${channel}`);
@@ -44,11 +50,15 @@ function handleMsg(channel, msg) {
       break;
     case 'status':
       if (channel !== 'console')
-        setStatus(channel, msg.status, msg.status === 'WORKING' ? 'active' : msg.status === 'ERROR' ? 'error' : '');
+        setStatus(channel, msg.status,
+          msg.status === 'WORKING' ? 'active' : msg.status === 'ERROR' ? 'error' : '');
       break;
     case 'loop_update':
       document.getElementById('loop-counter').textContent =
         `LOOP: ${msg.iteration}/${msg.max}`;
+      break;
+    case 'loop_state':
+      setLoopRunning(msg.running);
       break;
     case 'project':
       document.getElementById('project-name').textContent = msg.name;
@@ -69,16 +79,14 @@ function handleMsg(channel, msg) {
   }
 }
 
-// ── Terminal Rendering ─────────────────────────────────
+// ── Terminal rendering ─────────────────────────────────
 
-// We maintain a single "current line" span per stream for token-by-token appending.
 const cursors = {};
 
 function appendTokens(channel, text) {
   if (!text) return;
   const el = document.getElementById(`stream-${channel}`);
   if (!el) return;
-
   const parts = text.split('\n');
   parts.forEach((chunk, i) => {
     if (!cursors[channel] || i > 0) {
@@ -92,32 +100,23 @@ function appendTokens(channel, text) {
       cursors[channel] = null;
     }
   });
-
   el.scrollTop = el.scrollHeight;
 }
 
 function clearStream(channel) {
   const el = document.getElementById(`stream-${channel}`);
-  if (el) { el.innerHTML = ''; }
+  if (el) el.innerHTML = '';
   delete cursors[channel];
 }
 
 function sysLog(msg, level = 'sys') {
-  const el = document.getElementById('stream-console');
-  if (!el) return;
-  const ts = new Date().toTimeString().slice(0, 8);
-  const span = document.createElement('span');
-  span.className = `tok line-${level}`;
-  span.textContent = `[${ts}] ${msg}`;
-  el.appendChild(span);
-  el.appendChild(document.createElement('br'));
-  el.scrollTop = el.scrollHeight;
+  appendConsoleLine(msg, level);
 }
 
 function appendConsoleLine(msg, level) {
   const el = document.getElementById('stream-console');
   if (!el) return;
-  const ts = new Date().toTimeString().slice(0, 8);
+  const ts   = new Date().toTimeString().slice(0, 8);
   const span = document.createElement('span');
   span.className = `tok line-${level}`;
   span.textContent = `[${ts}] ${msg}`;
@@ -126,7 +125,7 @@ function appendConsoleLine(msg, level) {
   el.scrollTop = el.scrollHeight;
 }
 
-// ── Agent Status LEDs ──────────────────────────────────
+// ── Agent status LEDs ──────────────────────────────────
 
 function setStatus(agentId, text, ledClass) {
   const led = document.getElementById(`led-${agentId}`);
@@ -136,7 +135,59 @@ function setStatus(agentId, text, ledClass) {
   lbl.textContent = text;
 }
 
-// ── Iframe Console Injection ───────────────────────────
+// ── Loop running state ─────────────────────────────────
+
+function setLoopRunning(running) {
+  loopRunning = running;
+  const sendBtn = document.getElementById('send-btn');
+  const stopBtn = document.getElementById('stop-btn');
+  sendBtn.disabled    = running;
+  stopBtn.style.display = running ? 'inline-block' : 'none';
+}
+
+async function stopLoop() {
+  try {
+    await fetch(`${API_BASE}/stop`, { method: 'POST' });
+    sysLog('[CMD] Stop signal sent', 'warn');
+  } catch (err) {
+    sysLog(`[CMD] Stop failed: ${err.message}`, 'error');
+  }
+}
+
+// ── File saved notifications ───────────────────────────
+
+function onFileSaved(msg) {
+  savedFilesCount++;
+  const badge = document.getElementById('files-badge');
+  badge.textContent = savedFilesCount;
+  badge.style.display = 'inline';
+  const kb = msg.size ? ` (${(msg.size / 1024).toFixed(1)} KB)` : '';
+  sysLog(`[FILE] Saved: ${msg.file}${kb}`, 'info');
+
+  // Auto-refresh iframe for web assets
+  const webExts = ['.html', '.js', '.ts', '.css'];
+  if (autoRefresh && webExts.some(ext => msg.file.endsWith(ext))) {
+    setTimeout(() => {
+      const frame = document.getElementById('preview-frame');
+      if (frame.src && frame.src !== 'about:blank') {
+        frame.src = frame.src;
+        sysLog(`[AUTO] Preview refreshed (${msg.file})`, 'info');
+      }
+    }, 600);
+  }
+}
+
+// ── Auto-refresh toggle ────────────────────────────────
+
+function toggleAutoRefresh() {
+  autoRefresh = !autoRefresh;
+  const btn = document.getElementById('auto-refresh-btn');
+  btn.className = autoRefresh ? 'ar-on' : 'ar-off';
+  btn.title = autoRefresh ? 'Auto-refresh ON — click to disable' : 'Auto-refresh OFF — click to enable';
+  sysLog(`[AUTO] Preview auto-refresh: ${autoRefresh ? 'ON' : 'OFF'}`, 'sys');
+}
+
+// ── Iframe console injection ───────────────────────────
 
 function loadPreview() {
   const url = document.getElementById('preview-url-input').value.trim();
@@ -153,64 +204,65 @@ function injectConsoleRelay(iframe) {
   try {
     const win = iframe.contentWindow;
     if (!win?.document?.head) return;
-
     const script = win.document.createElement('script');
     script.textContent = `
 (function(){
   if(window.__cockpitInjected) return;
   window.__cockpitInjected = true;
-  function relay(lvl, args){
-    const msg = Array.from(args).map(a=>{
-      try{ return typeof a==='object'? JSON.stringify(a,null,2):String(a); }catch{ return String(a); }
+  function relay(lvl,args){
+    const msg=Array.from(args).map(a=>{
+      try{return typeof a==='object'?JSON.stringify(a,null,2):String(a);}catch{return String(a);}
     }).join(' ');
     window.parent.postMessage({type:'iframe-console',level:lvl,message:msg},'*');
   }
   ['log','warn','error','info','debug'].forEach(m=>{
-    const orig = console[m].bind(console);
-    console[m] = (...a)=>{ relay(m,a); orig(...a); };
+    const orig=console[m].bind(console);
+    console[m]=(...a)=>{relay(m,a);orig(...a);};
   });
-  window.addEventListener('error', e=>{
+  window.addEventListener('error',e=>{
     relay('error',[e.message+' @ '+e.filename+':'+e.lineno+':'+e.colno]);
   });
-  window.addEventListener('unhandledrejection', e=>{
-    relay('error',['Unhandled Promise rejection: '+e.reason]);
+  window.addEventListener('unhandledrejection',e=>{
+    relay('error',['Unhandled Promise: '+e.reason]);
   });
-})();
-    `;
+})();`;
     win.document.head.appendChild(script);
-    sysLog('[FRAME] Console relay injected (same-origin)');
+    sysLog('[FRAME] Console relay injected');
   } catch {
-    sysLog('[FRAME] Cross-origin iframe — postMessage relay only', 'warn');
+    sysLog('[FRAME] Cross-origin iframe — postMessage only', 'warn');
   }
 }
 
 window.addEventListener('message', (e) => {
-  if (e.data?.type === 'iframe-console') {
+  if (e.data?.type === 'iframe-console')
     appendConsoleLine(e.data.message, e.data.level || 'log');
-  }
 });
 
-// ── Command Broadcast ──────────────────────────────────
+// ── Command broadcast ──────────────────────────────────
 
 async function sendCommand(event) {
   if (event) event.preventDefault();
   const prompt  = document.getElementById('cmd-input').value.trim();
-  const project = document.getElementById('project-input').value.trim() || 'New Project';
-  if (!prompt) return;
+  const project = document.getElementById('project-input').value.trim() || currentProject;
+  if (!prompt || loopRunning) return;
 
-  const btn = document.getElementById('send-btn');
-  btn.disabled = true;
+  // Save to history
+  if (prompt !== cmdHistory[cmdHistory.length - 1]) {
+    cmdHistory.push(prompt);
+    if (cmdHistory.length > 50) cmdHistory.shift();
+    localStorage.setItem('swarm_cmd_history', JSON.stringify(cmdHistory));
+  }
+  historyIdx = -1;
+
   document.getElementById('cmd-input').value = '';
-
   CHANNELS.filter(c => c !== 'console').forEach(clearStream);
   savedFilesCount = 0;
-  const badge = document.getElementById('files-badge');
-  badge.style.display = 'none';
+  document.getElementById('files-badge').style.display = 'none';
   currentProject = project;
   sysLog(`[CMD] Broadcasting: "${prompt}"`);
 
   try {
-    const res = await fetch(`${API_BASE}/broadcast`, {
+    const res  = await fetch(`${API_BASE}/broadcast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, project })
@@ -219,30 +271,116 @@ async function sendCommand(event) {
     sysLog(`[CMD] ${data.status || data.error}`);
   } catch (err) {
     sysLog(`[CMD] Fetch error: ${err.message}`, 'error');
+    setLoopRunning(false);
   }
-
-  setTimeout(() => { btn.disabled = false; }, 2000);
 }
 
-// ── Agent Config Modal ─────────────────────────────────
+// ── Per-agent fire ─────────────────────────────────────
+
+async function fireAgent(agentId) {
+  const prompt  = document.getElementById('cmd-input').value.trim();
+  const project = document.getElementById('project-input').value.trim() || currentProject;
+  if (!prompt) {
+    sysLog(`[FIRE] Type a prompt in the command bar first`, 'warn');
+    document.getElementById('cmd-input').focus();
+    return;
+  }
+  if (loopRunning) {
+    sysLog('[FIRE] Stop the current loop first', 'warn');
+    return;
+  }
+
+  clearStream(agentId);
+  sysLog(`[FIRE] ${agentId} solo: "${prompt.slice(0, 50)}"`);
+
+  try {
+    const res  = await fetch(`${API_BASE}/agents/${agentId}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, project })
+    });
+    const data = await res.json();
+    sysLog(`[FIRE] ${data.status || data.error}`);
+  } catch (err) {
+    sysLog(`[FIRE] Error: ${err.message}`, 'error');
+  }
+}
+
+// ── Command history navigation ─────────────────────────
+
+document.getElementById('cmd-input').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    historyIdx = Math.min(historyIdx + 1, cmdHistory.length - 1);
+    e.target.value = cmdHistory[cmdHistory.length - 1 - historyIdx] ?? '';
+    // Move cursor to end
+    setTimeout(() => e.target.setSelectionRange(9999, 9999), 0);
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    historyIdx = Math.max(historyIdx - 1, -1);
+    e.target.value = historyIdx === -1 ? '' : (cmdHistory[cmdHistory.length - 1 - historyIdx] ?? '');
+  } else {
+    historyIdx = -1;
+  }
+});
+
+// ── Model status indicators ────────────────────────────
+
+async function checkModelStatus() {
+  const agents   = ['agent1', 'agent2', 'agent3', 'agent4'];
+  const dotEls   = agents.map(id => document.getElementById(`mdot-${id}`));
+
+  try {
+    const res    = await fetch(`${API_BASE}/models`);
+    const data   = await res.json();
+    const models = new Set(data.models ?? []);
+
+    // Also get configured models
+    const agentRes  = await fetch(`${API_BASE}/agents`);
+    const agentData = await agentRes.json();
+
+    agents.forEach((id, i) => {
+      const dot   = dotEls[i];
+      if (!dot) return;
+      const model = agentData[id]?.model ?? '';
+      // Ollama model names can omit the :latest tag
+      const found = models.has(model) ||
+                    models.has(model + ':latest') ||
+                    [...models].some(m => m.startsWith(model.split(':')[0]));
+
+      if (data.error) {
+        dot.className = 'model-dot offline';
+        dot.title     = 'Ollama offline';
+      } else if (found) {
+        dot.className = 'model-dot ok';
+        dot.title     = `${model} — available`;
+      } else {
+        dot.className = 'model-dot missing';
+        dot.title     = `${model} — not found in Ollama (run: ollama pull ${model})`;
+      }
+    });
+  } catch {
+    dotEls.forEach(d => { if (d) { d.className = 'model-dot offline'; d.title = 'Backend offline'; } });
+  }
+}
+
+// ── Agent config modal ─────────────────────────────────
 
 async function openModal(agentId) {
   currentModalAgent = agentId;
-  document.getElementById('modal-title').textContent = `⚙ CONFIGURE ${agentId.toUpperCase()}`;
+  const names = { agent1: 'AN', agent2: 'ENLIL', agent3: 'ENKI', agent4: 'ENZU' };
+  document.getElementById('modal-title').textContent = `⚙ CONFIGURE ${names[agentId] || agentId}`;
   document.getElementById('modal-overlay').classList.add('open');
 
   const sel = document.getElementById('modal-model-sel');
-  sel.innerHTML = '<option>Loading models…</option>';
-
+  sel.innerHTML = '<option>Loading…</option>';
   try {
-    const res  = await fetch(`${API_BASE}/models`);
-    const data = await res.json();
+    const res    = await fetch(`${API_BASE}/models`);
+    const data   = await res.json();
     const models = data.models ?? [];
-    if (models.length) {
-      sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
-    } else {
-      sel.innerHTML = '<option value="">No models found — is Ollama running?</option>';
-    }
+    sel.innerHTML = models.length
+      ? models.map(m => `<option value="${m}">${m}</option>`).join('')
+      : '<option value="">No models found — is Ollama running?</option>';
   } catch {
     sel.innerHTML = '<option value="">Backend unreachable</option>';
   }
@@ -258,15 +396,15 @@ async function applyAgentConfig() {
   const model = document.getElementById('modal-model-sel').value;
   const role  = document.getElementById('modal-role-sel').value;
   if (!model) { closeModal(); return; }
-
   try {
     await fetch(`${API_BASE}/agents/${currentModalAgent}/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, role })
     });
-    document.getElementById(`model-label-${currentModalAgent}`).textContent = model;
-    sysLog(`[CFG] ${currentModalAgent} → ${model} / ${role}`);
+    document.getElementById(`model-label-${currentModalAgent}`).childNodes[0].textContent = model + ' ';
+    sysLog(`[CFG] ${currentModalAgent} → ${model}`);
+    await checkModelStatus();
   } catch (err) {
     sysLog(`[CFG] Update failed: ${err.message}`, 'error');
   }
@@ -277,22 +415,11 @@ document.getElementById('modal-overlay').addEventListener('click', function (e) 
   if (e.target === this) closeModal();
 });
 
-// ── File saved notifications ───────────────────────────
-
-function onFileSaved(msg) {
-  savedFilesCount++;
-  const badge = document.getElementById('files-badge');
-  badge.textContent = savedFilesCount;
-  badge.style.display = 'inline';
-  const kb = msg.size ? ` (${(msg.size / 1024).toFixed(1)} KB)` : '';
-  sysLog(`[FILE] Saved: ${msg.file}${kb}`, 'info');
-}
-
-// ── Files Modal ────────────────────────────────────────
+// ── Files modal ────────────────────────────────────────
 
 async function openFilesModal() {
   const project = document.getElementById('project-input').value.trim() || currentProject;
-  document.getElementById('files-modal-title').textContent = `📁 OUTPUT FILES — ${project}`;
+  document.getElementById('files-modal-title').textContent = `𒁹 OUTPUT — ${project}`;
   document.getElementById('files-modal-overlay').classList.add('open');
   await refreshFilesList(project);
 }
@@ -305,7 +432,6 @@ async function refreshFilesList(project) {
   const empty = document.getElementById('files-empty');
   const table = document.getElementById('files-table');
   const tbody = document.getElementById('files-tbody');
-
   empty.textContent = 'Loading…';
   empty.style.display = 'block';
   table.style.display = 'none';
@@ -315,15 +441,9 @@ async function refreshFilesList(project) {
     const res   = await fetch(`${API_BASE}/files/${encodeURIComponent(project)}`);
     const data  = await res.json();
     const files = data.files ?? [];
-
-    if (!files.length) {
-      empty.textContent = 'No files generated yet. Run the swarm first.';
-      return;
-    }
-
+    if (!files.length) { empty.textContent = 'No files generated yet.'; return; }
     empty.style.display = 'none';
     table.style.display = 'table';
-
     files.forEach(f => {
       const tr = document.createElement('tr');
       const kb = (f.size / 1024).toFixed(1);
@@ -331,12 +451,11 @@ async function refreshFilesList(project) {
         <td>${f.name}</td>
         <td>${kb} KB</td>
         <td><a href="${API_BASE}/files/${encodeURIComponent(project)}/${encodeURIComponent(f.name)}"
-               target="_blank" download="${f.name}">↓ DOWNLOAD</a></td>
-      `;
+           target="_blank" download="${f.name}">↓ DOWNLOAD</a></td>`;
       tbody.appendChild(tr);
     });
   } catch (err) {
-    empty.textContent = `Error loading files: ${err.message}`;
+    empty.textContent = `Error: ${err.message}`;
   }
 }
 
@@ -347,11 +466,15 @@ document.getElementById('files-modal-overlay').addEventListener('click', functio
 // ── Keyboard shortcuts ─────────────────────────────────
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') { closeModal(); closeFilesModal(); }
 });
 
 // ── Init ───────────────────────────────────────────────
 
 CHANNELS.forEach(ch => { sockets[ch] = connect(ch); });
-sysLog('Panoptic AI Swarm Cockpit — ONLINE');
-sysLog('Waiting for swarm backend on ' + location.host + '…');
+sysLog('Panoptic AI Swarm Cockpit v1.2 — ONLINE');
+sysLog('𒀭 AN  𒂗𒍪 ENLIL  𒂗𒆳 ENKI  𒂗𒍪 ENZU — standing by');
+
+// Check model availability on load, then every 60s
+checkModelStatus();
+setInterval(checkModelStatus, 60_000);
