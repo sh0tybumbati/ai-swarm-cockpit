@@ -5,8 +5,9 @@ AGENTS: dict = {
         "name": "Engine Architect",
         "model": "qwen2.5-coder:14b",
         "role": "engine_architect",
-        "emoji": "🏗️",
-        "color": "#00e5ff",
+        "deity": "AN",
+        "emoji": "🦅",
+        "color": "#e8b800",
         "system": (
             "You are the Engine Architect for a web game development swarm. "
             "Design and implement the core game engine: ECS (Entity-Component-System) architecture, "
@@ -21,8 +22,9 @@ AGENTS: dict = {
         "name": "The Renderer",
         "model": "deepseek-coder:6.7b",
         "role": "renderer",
-        "emoji": "🎨",
-        "color": "#e040fb",
+        "deity": "ENLIL",
+        "emoji": "⚡",
+        "color": "#00aaff",
         "system": (
             "You are The Renderer for a web game development swarm. "
             "Your domain is WebGL shaders, Canvas 2D pipelines, sprite batching, "
@@ -36,8 +38,9 @@ AGENTS: dict = {
         "name": "DOM & Input Bridge",
         "model": "qwen2.5-coder:7b",
         "role": "dom_bridge",
-        "emoji": "🔌",
-        "color": "#39ff14",
+        "deity": "ENKI",
+        "emoji": "🐍",
+        "color": "#3dffd0",
         "system": (
             "You are the DOM & Input Bridge for a web game development swarm. "
             "Handle all browser interface concerns: keyboard/mouse/gamepad/touch input, "
@@ -51,8 +54,9 @@ AGENTS: dict = {
         "name": "The Sentinel",
         "model": "mistral:7b",
         "role": "sentinel",
-        "emoji": "🛡️",
-        "color": "#ff6b35",
+        "deity": "ENZU",
+        "emoji": "👁️",
+        "color": "#b44ff5",
         "system": (
             "You are The Sentinel — QA and verification agent for a web game development swarm.\n\n"
             "Review the code from the other agents and respond with EXACTLY one of these two verdicts:\n\n"

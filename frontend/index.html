@@ -3,36 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Panoptic AI Swarm Cockpit</title>
+  <title>Panoptic AI Swarm Cockpit — Project ENMERKAR</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="cockpit-grid">
 
-    <!-- ══ AGENT 1: Engine Architect (Top-Left) ══ -->
+    <!-- ══ AGENT 1: AN — Engine Architect (Top-Left) ══ -->
     <div class="profile-block a1" id="profile-agent1" onclick="openModal('agent1')">
-      <div class="avatar">🏗️</div>
+      <div class="avatar">🦅</div>
       <div class="agent-meta">
-        <div class="agent-id">AGENT <span class="num">01</span></div>
-        <div class="agent-model" id="model-label-agent1">Qwen-2.5-Coder-14B</div>
+        <div class="agent-id"><span class="cuneiform-glyph">𒀭</span> AGENT <span class="num">01</span></div>
+        <div class="agent-deity">AN</div>
         <div class="agent-role">Engine Architect</div>
+        <div class="agent-model" id="model-label-agent1">Qwen-2.5-Coder-14B</div>
         <div class="agent-status-row">
           <span class="led" id="led-agent1"></span>
           <span class="led-label" id="status-agent1">IDLE</span>
         </div>
       </div>
-      <div class="config-hint">⚙ CONFIG</div>
+      <div class="config-hint">⚙ CONFIGURE</div>
     </div>
 
     <div class="cli-block a1-cli">
-      <div class="cli-header">AGT-01 ▸ ENGINE ARCHITECT</div>
+      <div class="cli-header">𒀭 AGT-01 ▸ AN — ENGINE ARCHITECT</div>
       <div class="cli-output" id="stream-agent1"></div>
     </div>
 
     <!-- ══ TOP CENTER: System Console ══ -->
     <div class="top-console">
       <div class="tc-header">
-        <span>📁 <span id="project-name">NO PROJECT</span></span>
+        <span>𒁹 <span id="project-name">NO PROJECT</span></span>
         <span class="divider">│</span>
         <span>🟢 <span id="host-url">localhost:3000</span></span>
         <span class="divider">│</span>
@@ -41,87 +42,94 @@
       <div class="cli-output tc-output" id="stream-console"></div>
     </div>
 
-    <!-- ══ AGENT 2: The Renderer (Top-Right) ══ -->
+    <!-- ══ AGENT 2: ENLIL — The Renderer (Top-Right) ══ -->
     <div class="cli-block a2-cli">
-      <div class="cli-header">AGT-02 ▸ THE RENDERER</div>
+      <div class="cli-header">𒂗𒍪 AGT-02 ▸ ENLIL — THE RENDERER</div>
       <div class="cli-output" id="stream-agent2"></div>
     </div>
 
     <div class="profile-block a2" id="profile-agent2" onclick="openModal('agent2')">
-      <div class="avatar">🎨</div>
+      <div class="avatar">⚡</div>
       <div class="agent-meta">
-        <div class="agent-id">AGENT <span class="num">02</span></div>
-        <div class="agent-model" id="model-label-agent2">DeepSeek-Coder-8B</div>
+        <div class="agent-id"><span class="cuneiform-glyph">𒂗𒍪</span> AGENT <span class="num">02</span></div>
+        <div class="agent-deity">ENLIL</div>
         <div class="agent-role">The Renderer</div>
+        <div class="agent-model" id="model-label-agent2">DeepSeek-Coder-8B</div>
         <div class="agent-status-row">
           <span class="led" id="led-agent2"></span>
           <span class="led-label" id="status-agent2">IDLE</span>
         </div>
       </div>
-      <div class="config-hint">⚙ CONFIG</div>
+      <div class="config-hint">⚙ CONFIGURE</div>
     </div>
 
     <!-- ══ CENTER: Live Render Window (3×3 spanning) ══ -->
     <div class="render-window">
       <div class="render-header">
-        <span class="render-title">◈ LIVE PREVIEW</span>
+        <span class="render-title">◈ LIVE PREVIEW — ENMERKAR</span>
         <input id="preview-url-input" type="text" value="http://localhost:3000" />
         <button onclick="loadPreview()">LOAD</button>
         <button id="files-btn" onclick="openFilesModal()" title="Browse generated output files">
-          📁 FILES <span id="files-badge" class="files-badge" style="display:none">0</span>
+          𒁹 FILES <span id="files-badge" class="files-badge" style="display:none">0</span>
         </button>
       </div>
       <iframe id="preview-frame" src="about:blank"
         sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
     </div>
 
-    <!-- ══ AGENT 3: DOM & Input Bridge (Bottom-Left) ══ -->
+    <!-- ══ AGENT 3: ENKI — DOM & Input Bridge (Bottom-Left) ══ -->
     <div class="profile-block a3" id="profile-agent3" onclick="openModal('agent3')">
-      <div class="avatar">🔌</div>
+      <div class="avatar">🐍</div>
       <div class="agent-meta">
-        <div class="agent-id">AGENT <span class="num">03</span></div>
-        <div class="agent-model" id="model-label-agent3">Qwen-2.5-Coder-7B</div>
+        <div class="agent-id"><span class="cuneiform-glyph">𒂗𒆳</span> AGENT <span class="num">03</span></div>
+        <div class="agent-deity">ENKI</div>
         <div class="agent-role">DOM & Input Bridge</div>
+        <div class="agent-model" id="model-label-agent3">Qwen-2.5-Coder-7B</div>
         <div class="agent-status-row">
           <span class="led" id="led-agent3"></span>
           <span class="led-label" id="status-agent3">IDLE</span>
         </div>
       </div>
-      <div class="config-hint">⚙ CONFIG</div>
+      <div class="config-hint">⚙ CONFIGURE</div>
     </div>
 
     <div class="cli-block a3-cli">
-      <div class="cli-header">AGT-03 ▸ DOM & INPUT BRIDGE</div>
+      <div class="cli-header">𒂗𒆳 AGT-03 ▸ ENKI — DOM & INPUT BRIDGE</div>
       <div class="cli-output" id="stream-agent3"></div>
     </div>
 
-    <!-- ══ AGENT 4: The Sentinel (Bottom-Right) ══ -->
+    <!-- ══ AGENT 4: ENZU — The Sentinel (Bottom-Right) ══ -->
     <div class="cli-block a4-cli">
-      <div class="cli-header">AGT-04 ▸ THE SENTINEL</div>
+      <div class="cli-header">𒂗𒍪 AGT-04 ▸ ENZU — THE SENTINEL</div>
       <div class="cli-output" id="stream-agent4"></div>
     </div>
 
     <div class="profile-block a4" id="profile-agent4" onclick="openModal('agent4')">
-      <div class="avatar">🛡️</div>
+      <div class="avatar">👁️</div>
       <div class="agent-meta">
-        <div class="agent-id">AGENT <span class="num">04</span></div>
-        <div class="agent-model" id="model-label-agent4">Mistral-7B-v0.3</div>
+        <div class="agent-id"><span class="cuneiform-glyph">𒂗𒍪</span> AGENT <span class="num">04</span></div>
+        <div class="agent-deity">ENZU</div>
         <div class="agent-role">The Sentinel</div>
+        <div class="agent-model" id="model-label-agent4">Mistral-7B-v0.3</div>
         <div class="agent-status-row">
           <span class="led" id="led-agent4"></span>
           <span class="led-label" id="status-agent4">IDLE</span>
         </div>
       </div>
-      <div class="config-hint">⚙ CONFIG</div>
+      <div class="config-hint">⚙ CONFIGURE</div>
     </div>
 
     <!-- ══ BOTTOM CENTER: Command Prompt ══ -->
     <div class="command-prompt">
-      <div class="prompt-label">▶ BROADCAST COMMAND TO SWARM</div>
+      <div class="prompt-label">𒀭 BROADCAST COMMAND TO SWARM 𒀭</div>
       <form id="cmd-form" onsubmit="sendCommand(event)">
-        <input type="text" id="cmd-input" placeholder="Enter feature request..." autocomplete="off" />
-        <input type="text" id="project-input" placeholder="Project name" value="Silicon-Tycoon" />
-        <button type="submit" id="send-btn">SEND ▶</button>
+        <input type="text" id="cmd-input"
+          placeholder="[YOU] : Enter feature request for the swarm..."
+          autocomplete="off" />
+        <input type="text" id="project-input"
+          placeholder="Project name"
+          value="ENMERKAR" />
+        <button type="submit" id="send-btn">▶ SUBMIT</button>
       </form>
     </div>
 
@@ -136,16 +144,16 @@
       </div>
       <div class="modal-body">
         <div class="field">
-          <label>MODEL</label>
+          <label>𒀭 MODEL</label>
           <select id="modal-model-sel"></select>
         </div>
         <div class="field">
-          <label>ROLE</label>
+          <label>𒁹 ROLE</label>
           <select id="modal-role-sel">
-            <option value="engine_architect">Engine Architect</option>
-            <option value="renderer">The Renderer (Shaders & Math)</option>
-            <option value="dom_bridge">DOM & Input Bridge</option>
-            <option value="sentinel">The Sentinel (QA & Verification)</option>
+            <option value="engine_architect">AN — Engine Architect</option>
+            <option value="renderer">ENLIL — The Renderer (Shaders & Math)</option>
+            <option value="dom_bridge">ENKI — DOM & Input Bridge</option>
+            <option value="sentinel">ENZU — The Sentinel (QA & Verification)</option>
           </select>
         </div>
         <div class="modal-actions">
@@ -160,19 +168,17 @@
   <div class="modal-overlay" id="files-modal-overlay">
     <div class="modal-box files-modal-box">
       <div class="modal-header">
-        <span id="files-modal-title">📁 OUTPUT FILES</span>
+        <span id="files-modal-title">𒁹 OUTPUT FILES</span>
         <button class="close-btn" onclick="closeFilesModal()">✕</button>
       </div>
       <div class="modal-body">
-        <div id="files-list-container">
-          <div class="files-empty" id="files-empty">No files generated yet. Run the swarm first.</div>
-          <table class="files-table" id="files-table" style="display:none">
-            <thead>
-              <tr><th>FILE</th><th>SIZE</th><th></th></tr>
-            </thead>
-            <tbody id="files-tbody"></tbody>
-          </table>
-        </div>
+        <div class="files-empty" id="files-empty">No files generated yet. Run the swarm first.</div>
+        <table class="files-table" id="files-table" style="display:none">
+          <thead>
+            <tr><th>FILE</th><th>SIZE</th><th></th></tr>
+          </thead>
+          <tbody id="files-tbody"></tbody>
+        </table>
       </div>
     </div>
   </div>
