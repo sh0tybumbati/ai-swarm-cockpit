@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panoptic AI Swarm Cockpit</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="cockpit-grid">
+
+    <!-- ══ AGENT 1: Engine Architect (Top-Left) ══ -->
+    <div class="profile-block a1" id="profile-agent1" onclick="openModal('agent1')">
+      <div class="avatar">🏗️</div>
+      <div class="agent-meta">
+        <div class="agent-id">AGENT <span class="num">01</span></div>
+        <div class="agent-model" id="model-label-agent1">Qwen-2.5-Coder-14B</div>
+        <div class="agent-role">Engine Architect</div>
+        <div class="agent-status-row">
+          <span class="led" id="led-agent1"></span>
+          <span class="led-label" id="status-agent1">IDLE</span>
+        </div>
+      </div>
+      <div class="config-hint">⚙ CONFIG</div>
+    </div>
+
+    <div class="cli-block a1-cli">
+      <div class="cli-header">AGT-01 ▸ ENGINE ARCHITECT</div>
+      <div class="cli-output" id="stream-agent1"></div>
+    </div>
+
+    <!-- ══ TOP CENTER: System Console ══ -->
+    <div class="top-console">
+      <div class="tc-header">
+        <span>📁 <span id="project-name">NO PROJECT</span></span>
+        <span class="divider">│</span>
+        <span>🟢 <span id="host-url">localhost:3000</span></span>
+        <span class="divider">│</span>
+        <span class="loop-badge" id="loop-counter">LOOP: 0/12</span>
+      </div>
+      <div class="cli-output tc-output" id="stream-console"></div>
+    </div>
+
+    <!-- ══ AGENT 2: The Renderer (Top-Right) ══ -->
+    <div class="cli-block a2-cli">
+      <div class="cli-header">AGT-02 ▸ THE RENDERER</div>
+      <div class="cli-output" id="stream-agent2"></div>
+    </div>
+
+    <div class="profile-block a2" id="profile-agent2" onclick="openModal('agent2')">
+      <div class="avatar">🎨</div>
+      <div class="agent-meta">
+        <div class="agent-id">AGENT <span class="num">02</span></div>
+        <div class="agent-model" id="model-label-agent2">DeepSeek-Coder-8B</div>
+        <div class="agent-role">The Renderer</div>
+        <div class="agent-status-row">
+          <span class="led" id="led-agent2"></span>
+          <span class="led-label" id="status-agent2">IDLE</span>
+        </div>
+      </div>
+      <div class="config-hint">⚙ CONFIG</div>
+    </div>
+
+    <!-- ══ CENTER: Live Render Window (3×3 spanning) ══ -->
+    <div class="render-window">
+      <div class="render-header">
+        <span class="render-title">◈ LIVE PREVIEW</span>
+        <input id="preview-url-input" type="text" value="http://localhost:3000" />
+        <button onclick="loadPreview()">LOAD</button>
+      </div>
+      <iframe id="preview-frame" src="about:blank"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
+    </div>
+
+    <!-- ══ AGENT 3: DOM & Input Bridge (Bottom-Left) ══ -->
+    <div class="profile-block a3" id="profile-agent3" onclick="openModal('agent3')">
+      <div class="avatar">🔌</div>
+      <div class="agent-meta">
+        <div class="agent-id">AGENT <span class="num">03</span></div>
+        <div class="agent-model" id="model-label-agent3">Qwen-2.5-Coder-7B</div>
+        <div class="agent-role">DOM & Input Bridge</div>
+        <div class="agent-status-row">
+          <span class="led" id="led-agent3"></span>
+          <span class="led-label" id="status-agent3">IDLE</span>
+        </div>
+      </div>
+      <div class="config-hint">⚙ CONFIG</div>
+    </div>
+
+    <div class="cli-block a3-cli">
+      <div class="cli-header">AGT-03 ▸ DOM & INPUT BRIDGE</div>
+      <div class="cli-output" id="stream-agent3"></div>
+    </div>
+
+    <!-- ══ AGENT 4: The Sentinel (Bottom-Right) ══ -->
+    <div class="cli-block a4-cli">
+      <div class="cli-header">AGT-04 ▸ THE SENTINEL</div>
+      <div class="cli-output" id="stream-agent4"></div>
+    </div>
+
+    <div class="profile-block a4" id="profile-agent4" onclick="openModal('agent4')">
+      <div class="avatar">🛡️</div>
+      <div class="agent-meta">
+        <div class="agent-id">AGENT <span class="num">04</span></div>
+        <div class="agent-model" id="model-label-agent4">Mistral-7B-v0.3</div>
+        <div class="agent-role">The Sentinel</div>
+        <div class="agent-status-row">
+          <span class="led" id="led-agent4"></span>
+          <span class="led-label" id="status-agent4">IDLE</span>
+        </div>
+      </div>
+      <div class="config-hint">⚙ CONFIG</div>
+    </div>
+
+    <!-- ══ BOTTOM CENTER: Command Prompt ══ -->
+    <div class="command-prompt">
+      <div class="prompt-label">▶ BROADCAST COMMAND TO SWARM</div>
+      <form id="cmd-form" onsubmit="sendCommand(event)">
+        <input type="text" id="cmd-input" placeholder="Enter feature request..." autocomplete="off" />
+        <input type="text" id="project-input" placeholder="Project name" value="Silicon-Tycoon" />
+        <button type="submit" id="send-btn">SEND ▶</button>
+      </form>
+    </div>
+
+  </div>
+
+  <!-- ══ Agent Config Modal ══ -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span id="modal-title">⚙ CONFIGURE AGENT</span>
+        <button class="close-btn" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>MODEL</label>
+          <select id="modal-model-sel"></select>
+        </div>
+        <div class="field">
+          <label>ROLE</label>
+          <select id="modal-role-sel">
+            <option value="engine_architect">Engine Architect</option>
+            <option value="renderer">The Renderer (Shaders & Math)</option>
+            <option value="dom_bridge">DOM & Input Bridge</option>
+            <option value="sentinel">The Sentinel (QA & Verification)</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button onclick="applyAgentConfig()">✓ APPLY</button>
+          <button class="btn-cancel" onclick="closeModal()">CANCEL</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
