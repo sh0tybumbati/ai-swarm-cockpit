@@ -67,6 +67,9 @@
         <span class="render-title">◈ LIVE PREVIEW</span>
         <input id="preview-url-input" type="text" value="http://localhost:3000" />
         <button onclick="loadPreview()">LOAD</button>
+        <button id="files-btn" onclick="openFilesModal()" title="Browse generated output files">
+          📁 FILES <span id="files-badge" class="files-badge" style="display:none">0</span>
+        </button>
       </div>
       <iframe id="preview-frame" src="about:blank"
         sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
@@ -148,6 +151,27 @@
         <div class="modal-actions">
           <button onclick="applyAgentConfig()">✓ APPLY</button>
           <button class="btn-cancel" onclick="closeModal()">CANCEL</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Files Modal ══ -->
+  <div class="modal-overlay" id="files-modal-overlay">
+    <div class="modal-box files-modal-box">
+      <div class="modal-header">
+        <span id="files-modal-title">📁 OUTPUT FILES</span>
+        <button class="close-btn" onclick="closeFilesModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="files-list-container">
+          <div class="files-empty" id="files-empty">No files generated yet. Run the swarm first.</div>
+          <table class="files-table" id="files-table" style="display:none">
+            <thead>
+              <tr><th>FILE</th><th>SIZE</th><th></th></tr>
+            </thead>
+            <tbody id="files-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>

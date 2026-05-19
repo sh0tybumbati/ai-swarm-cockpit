@@ -9,51 +9,42 @@ import logging
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from agents import AGENTS
-from orchestrator import SwarmOrchestrator
+from orchestrator import OUTPUT_BASE, SwarmOrchestrator, list_output_files, _safe_name
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 logger = logging.getLogger("cockpit")
 
-app = FastAPI(title="Panoptic AI Swarm Cockpit", version="1.0.0")
+app = FastAPI(title="Panoptic AI Swarm Cockpit", version="1.1.0")
 orchestrator = SwarmOrchestrator()
 
 FRONTEND = Path(__file__).parent.parent / "frontend"
 
-# ── Static files ───────────────────────────────────────────────────────────────
 
-if FRONTEND.exists():
-    app.mount("/static", StaticFiles(directory=str(FRONTEND)), name="static")
-
+# ── Frontend static files ──────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     index = FRONTEND / "index.html"
-    if index.exists():
-        return HTMLResponse(index.read_text(encoding="utf-8"))
-    return HTMLResponse("<h1>Frontend not found. Run from project root.</h1>", status_code=404)
+    if not index.exists():
+        return HTMLResponse("<h1>Frontend not found.</h1>", status_code=404)
+    return HTMLResponse(index.read_text(encoding="utf-8"))
 
 
-# FastAPI doesn't auto-serve JS/CSS at root — wire them explicitly
 @app.get("/style.css")
 async def serve_css():
-    from fastapi.responses import Response
-    f = FRONTEND / "style.css"
-    return Response(f.read_text(), media_type="text/css")
+    return Response((FRONTEND / "style.css").read_text(), media_type="text/css")
 
 
 @app.get("/app.js")
 async def serve_js():
-    from fastapi.responses import Response
-    f = FRONTEND / "app.js"
-    return Response(f.read_text(), media_type="application/javascript")
+    return Response((FRONTEND / "app.js").read_text(), media_type="application/javascript")
 
 
-# ── WebSocket endpoints ────────────────────────────────────────────────────────
+# ── WebSocket ──────────────────────────────────────────────────────────────────
 
 @app.websocket("/ws/{channel}")
 async def ws_endpoint(websocket: WebSocket, channel: str):
@@ -64,9 +55,8 @@ async def ws_endpoint(websocket: WebSocket, channel: str):
             try:
                 msg = await asyncio.wait_for(websocket.receive_text(), timeout=25.0)
                 if msg == "pong":
-                    pass  # heartbeat response
+                    pass
             except asyncio.TimeoutError:
-                # Keepalive ping to the client
                 await websocket.send_text(json.dumps({"type": "ping"}))
     except WebSocketDisconnect:
         logger.info(f"WS closed: {channel}")
@@ -76,15 +66,14 @@ async def ws_endpoint(websocket: WebSocket, channel: str):
         await orchestrator.disconnect(channel, websocket)
 
 
-# ── REST API ───────────────────────────────────────────────────────────────────
+# ── Swarm API ──────────────────────────────────────────────────────────────────
 
 @app.get("/models")
 async def list_models():
     async with httpx.AsyncClient(timeout=5.0) as client:
         try:
-            resp = await client.get("http://localhost:11434/api/tags")
-            data = resp.json()
-            models = [m["name"] for m in data.get("models", [])]
+            resp   = await client.get("http://localhost:11434/api/tags")
+            models = [m["name"] for m in resp.json().get("models", [])]
             return {"models": models}
         except Exception as exc:
             return {"models": [], "error": str(exc)}
@@ -97,7 +86,7 @@ async def broadcast(payload: dict):
     if not prompt:
         return JSONResponse({"error": "prompt is required"}, status_code=400)
     asyncio.create_task(orchestrator.run_swarm_loop(prompt, project))
-    return {"status": f"Swarm loop initiated for: {prompt[:60]}"}
+    return {"status": f"Swarm loop initiated: {prompt[:60]}"}
 
 
 @app.get("/agents")
@@ -108,11 +97,42 @@ async def get_agents():
 @app.post("/agents/{agent_id}/config")
 async def update_agent(agent_id: str, config: dict):
     if agent_id not in AGENTS:
-        return JSONResponse({"error": "Agent not found"}, status_code=404)
+        raise HTTPException(404, "Agent not found")
     for key in ("model", "role"):
         if key in config:
             AGENTS[agent_id][key] = config[key]
     return {"status": "updated", "agent": AGENTS[agent_id]}
+
+
+# ── Output files API ───────────────────────────────────────────────────────────
+
+@app.get("/files/{project}")
+async def get_project_files(project: str):
+    files = list_output_files(project)
+    return {"project": project, "files": files}
+
+
+@app.get("/files/{project}/{filename}")
+async def download_file(project: str, filename: str):
+    # Sanitize: strip any directory components to prevent path traversal
+    safe_file = Path(filename).name
+    proj_dir  = OUTPUT_BASE / _safe_name(project)
+    filepath  = proj_dir / safe_file
+
+    if not filepath.exists() or not filepath.is_file():
+        raise HTTPException(404, "File not found")
+
+    media = "text/plain"
+    if safe_file.endswith(".html"):
+        media = "text/html"
+    elif safe_file.endswith(".css"):
+        media = "text/css"
+    elif safe_file.endswith((".js", ".ts")):
+        media = "application/javascript"
+    elif safe_file.endswith(".json"):
+        media = "application/json"
+
+    return FileResponse(filepath, media_type=media, filename=safe_file)
 
 
 @app.get("/health")

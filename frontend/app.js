@@ -8,6 +8,8 @@ const CHANNELS = ['agent1', 'agent2', 'agent3', 'agent4', 'console'];
 
 const sockets = {};
 let currentModalAgent = null;
+let currentProject    = 'New Project';
+let savedFilesCount   = 0;
 
 // ── WebSocket Manager ──────────────────────────────────
 
@@ -50,15 +52,19 @@ function handleMsg(channel, msg) {
       break;
     case 'project':
       document.getElementById('project-name').textContent = msg.name;
+      currentProject = msg.name;
       break;
     case 'console_line':
       appendConsoleLine(msg.message, msg.level || 'log');
+      break;
+    case 'file_saved':
+      onFileSaved(msg);
       break;
     case 'clear':
       clearStream(channel);
       break;
     case 'ping':
-      ws.send('pong');
+      sockets[channel]?.send('pong');
       break;
   }
 }
@@ -197,6 +203,10 @@ async function sendCommand(event) {
   document.getElementById('cmd-input').value = '';
 
   CHANNELS.filter(c => c !== 'console').forEach(clearStream);
+  savedFilesCount = 0;
+  const badge = document.getElementById('files-badge');
+  badge.style.display = 'none';
+  currentProject = project;
   sysLog(`[CMD] Broadcasting: "${prompt}"`);
 
   try {
@@ -265,6 +275,73 @@ async function applyAgentConfig() {
 
 document.getElementById('modal-overlay').addEventListener('click', function (e) {
   if (e.target === this) closeModal();
+});
+
+// ── File saved notifications ───────────────────────────
+
+function onFileSaved(msg) {
+  savedFilesCount++;
+  const badge = document.getElementById('files-badge');
+  badge.textContent = savedFilesCount;
+  badge.style.display = 'inline';
+  const kb = msg.size ? ` (${(msg.size / 1024).toFixed(1)} KB)` : '';
+  sysLog(`[FILE] Saved: ${msg.file}${kb}`, 'info');
+}
+
+// ── Files Modal ────────────────────────────────────────
+
+async function openFilesModal() {
+  const project = document.getElementById('project-input').value.trim() || currentProject;
+  document.getElementById('files-modal-title').textContent = `📁 OUTPUT FILES — ${project}`;
+  document.getElementById('files-modal-overlay').classList.add('open');
+  await refreshFilesList(project);
+}
+
+function closeFilesModal() {
+  document.getElementById('files-modal-overlay').classList.remove('open');
+}
+
+async function refreshFilesList(project) {
+  const empty = document.getElementById('files-empty');
+  const table = document.getElementById('files-table');
+  const tbody = document.getElementById('files-tbody');
+
+  empty.textContent = 'Loading…';
+  empty.style.display = 'block';
+  table.style.display = 'none';
+  tbody.innerHTML = '';
+
+  try {
+    const res   = await fetch(`${API_BASE}/files/${encodeURIComponent(project)}`);
+    const data  = await res.json();
+    const files = data.files ?? [];
+
+    if (!files.length) {
+      empty.textContent = 'No files generated yet. Run the swarm first.';
+      return;
+    }
+
+    empty.style.display = 'none';
+    table.style.display = 'table';
+
+    files.forEach(f => {
+      const tr = document.createElement('tr');
+      const kb = (f.size / 1024).toFixed(1);
+      tr.innerHTML = `
+        <td>${f.name}</td>
+        <td>${kb} KB</td>
+        <td><a href="${API_BASE}/files/${encodeURIComponent(project)}/${encodeURIComponent(f.name)}"
+               target="_blank" download="${f.name}">↓ DOWNLOAD</a></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    empty.textContent = `Error loading files: ${err.message}`;
+  }
+}
+
+document.getElementById('files-modal-overlay').addEventListener('click', function (e) {
+  if (e.target === this) closeFilesModal();
 });
 
 // ── Keyboard shortcuts ─────────────────────────────────

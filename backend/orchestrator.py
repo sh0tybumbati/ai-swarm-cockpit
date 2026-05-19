@@ -1,15 +1,19 @@
 """
-Swarm Orchestrator — manages WebSocket connections and the agent loop.
+Swarm Orchestrator — WebSocket connection manager + agent loop.
 
-Loop:  Agent1 (Engine) → Agent2 (Renderer) → Agent4 (Sentinel)
-       Sentinel either marks COMPLETE or routes back with a reason.
+Loop:  Agent1 (Engine) → Agent2 (Renderer) → Agent3 (DOM Bridge) → Agent4 (Sentinel)
+       Sentinel marks COMPLETE or routes back to the responsible agent.
        Circuit breaker terminates at MAX_ITERATIONS.
+       All code blocks are extracted and saved to output/<project>/.
 """
 
 import asyncio
 import json
 import logging
-from typing import Dict, List
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
 
 import httpx
 from fastapi import WebSocket
@@ -20,8 +24,101 @@ logger = logging.getLogger(__name__)
 OLLAMA_BASE    = "http://localhost:11434"
 MAX_ITERATIONS = 12
 OLLAMA_TIMEOUT = 180.0
-MAX_CTX_CHARS  = 2000   # truncation limit when passing context between agents
+MAX_CTX_CHARS  = 2500
+OUTPUT_BASE    = Path(__file__).parent.parent / "output"
 
+# Map language identifiers → file extensions
+LANG_EXT: Dict[str, str] = {
+    "javascript": "js", "js": "js",
+    "typescript": "ts", "ts": "ts",
+    "css": "css", "html": "html",
+    "glsl": "glsl", "wgsl": "wgsl",
+    "python": "py",  "py": "py",
+    "json": "json",  "sh": "sh", "bash": "sh",
+    "": "js",  # default to js for unlabelled blocks in a game context
+}
+
+# Agent display names for file prefixes
+AGENT_FILE_PREFIX = {
+    "agent1": "engine",
+    "agent2": "renderer",
+    "agent3": "dom_bridge",
+    "agent4": "sentinel",
+}
+
+
+# ── Code extraction & file saving ─────────────────────────────────────────────
+
+def extract_code_blocks(text: str) -> List[Dict]:
+    pattern = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)
+    blocks = []
+    for lang, code in pattern.findall(text):
+        ext = LANG_EXT.get(lang.lower(), "txt")
+        blocks.append({"lang": lang or "js", "ext": ext, "code": code.strip()})
+    return blocks
+
+
+def save_agent_output(project: str, agent_id: str, iteration: int, text: str) -> List[Dict]:
+    """Write extracted code blocks to output/<project>/. Returns list of saved file info."""
+    blocks = extract_code_blocks(text)
+    if not blocks:
+        return []
+
+    prefix   = AGENT_FILE_PREFIX.get(agent_id, agent_id)
+    proj_dir = OUTPUT_BASE / _safe_name(project)
+    proj_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+    for i, block in enumerate(blocks):
+        suffix   = f"_{i + 1}" if len(blocks) > 1 else ""
+        filename = f"{prefix}{suffix}.{block['ext']}"
+        (proj_dir / filename).write_text(block["code"], encoding="utf-8")
+        saved.append({
+            "file": filename,
+            "size": len(block["code"]),
+            "lang": block["lang"],
+            "agent": agent_id,
+        })
+    return saved
+
+
+def save_session_log(project: str, feature: str, iterations: int, outputs: Dict[str, str]):
+    """Write a full markdown session log to output/<project>/session_<ts>.md."""
+    proj_dir = OUTPUT_BASE / _safe_name(project)
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = proj_dir / f"session_{ts}.md"
+
+    lines = [
+        f"# Swarm Session — {project}",
+        f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"**Feature:** {feature}",
+        f"**Iterations:** {iterations}",
+        "",
+    ]
+    for agent_id, text in outputs.items():
+        name = AGENTS.get(agent_id, {}).get("name", agent_id)
+        lines += [f"## {name}\n", text.strip(), ""]
+
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _safe_name(project: str) -> str:
+    return re.sub(r"[^\w\-]", "_", project).lower().strip("_") or "project"
+
+
+def list_output_files(project: str) -> List[Dict]:
+    proj_dir = OUTPUT_BASE / _safe_name(project)
+    if not proj_dir.exists():
+        return []
+    return [
+        {"name": f.name, "size": f.stat().st_size, "modified": f.stat().st_mtime}
+        for f in sorted(proj_dir.iterdir())
+        if f.is_file()
+    ]
+
+
+# ── Connection manager ─────────────────────────────────────────────────────────
 
 class ConnectionManager:
     def __init__(self):
@@ -45,8 +142,6 @@ class ConnectionManager:
         for ws in dead:
             await self.disconnect(channel, ws)
 
-    # ── Convenience helpers ─────────────────────────────
-
     async def send_token(self, channel: str, text: str):
         await self._broadcast(channel, {"type": "token", "content": text})
 
@@ -67,10 +162,20 @@ class ConnectionManager:
             "level": level,
         })
 
+    async def notify_files(self, files: List[Dict]):
+        """Push a file-saved notification to the console channel."""
+        for f in files:
+            await self._broadcast("console", {
+                "type": "file_saved",
+                "file": f["file"],
+                "size": f["size"],
+                "agent": f.get("agent", ""),
+            })
+
+
+# ── Swarm orchestrator ─────────────────────────────────────────────────────────
 
 class SwarmOrchestrator(ConnectionManager):
-
-    # ── Ollama streaming ────────────────────────────────
 
     async def _run_agent(self, agent_id: str, messages: list) -> str:
         agent  = AGENTS[agent_id]
@@ -78,22 +183,18 @@ class SwarmOrchestrator(ConnectionManager):
         output = ""
 
         await self.send_status(agent_id, "WORKING")
-        await self.sys_log(f"[{agent['name']}] → {model}")
+        await self.sys_log(f"[{agent['name']}] ▸ {model}")
 
         payload = {
             "model": model,
             "messages": [{"role": "system", "content": agent["system"]}] + messages,
             "stream": True,
-            "options": {"temperature": 0.3, "num_ctx": 4096},
+            "options": {"temperature": 0.25, "num_ctx": 4096},
         }
 
         try:
             async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
-                async with client.stream(
-                    "POST",
-                    f"{OLLAMA_BASE}/api/chat",
-                    json=payload,
-                ) as resp:
+                async with client.stream("POST", f"{OLLAMA_BASE}/api/chat", json=payload) as resp:
                     if resp.status_code != 200:
                         err = f"Ollama HTTP {resp.status_code}"
                         await self.send_token(agent_id, f"\n[ERROR] {err}\n")
@@ -130,12 +231,13 @@ class SwarmOrchestrator(ConnectionManager):
         await self.send_token(agent_id, "\n")
         return output
 
-    # ── Sentinel verdict parser ─────────────────────────
+    # ── Sentinel verdict parsing ───────────────────────────────────────────────
 
     @staticmethod
     def _parse_verdict(text: str) -> dict:
         upper = text.upper()
 
+        # Structured verdict — preferred path
         if "VERDICT: COMPLETE" in upper:
             reason = ""
             for line in text.splitlines():
@@ -160,97 +262,138 @@ class SwarmOrchestrator(ConnectionManager):
                     reason = line.split(":", 1)[1].strip()
             return {"decision": "route_back", "route_to": route_to, "reason": reason}
 
-        # Ambiguous — treat as complete to avoid infinite loops
-        return {"decision": "complete", "reason": "No explicit verdict; treating as complete"}
+        # Heuristic fallback — smaller models sometimes ignore the format
+        bug_signals   = {"bug", "error", "broken", "missing", "incorrect", "wrong",
+                         "fail", "crash", "undefined", "null", "leak", "fix"}
+        route_signals = {"route", "back", "rework", "revise", "redo", "retry", "agent"}
 
-    # ── Main swarm loop ─────────────────────────────────
+        words = set(re.findall(r"\b\w+\b", upper.lower()))
+        has_bugs   = len(words & bug_signals)   >= 2
+        has_route  = len(words & route_signals) >= 1
+
+        if has_bugs and has_route:
+            # Try to infer target from context
+            route_to = "agent1"
+            if any(w in upper for w in ("RENDER", "SHADER", "CANVAS", "WEBGL", "AGENT 2", "AGENT2")):
+                route_to = "agent2"
+            elif any(w in upper for w in ("DOM", "INPUT", "EVENT", "AGENT 3", "AGENT3")):
+                route_to = "agent3"
+            return {
+                "decision": "route_back",
+                "route_to": route_to,
+                "reason": "Issues detected (inferred from unstructured verdict)",
+            }
+
+        # Default: treat as complete to avoid infinite loops
+        return {"decision": "complete", "reason": "No explicit verdict — treated as complete"}
+
+    # ── Main swarm loop ────────────────────────────────────────────────────────
 
     async def run_swarm_loop(self, feature_request: str, project: str):
         await self._broadcast("console", {"type": "project", "name": project})
         await self.sys_log(f"══ SWARM START: {project} ══")
         await self.sys_log(f"Feature: {feature_request}")
 
-        # Clear all agent streams at loop start
         for aid in ["agent1", "agent2", "agent3", "agent4"]:
             await self._broadcast(aid, {"type": "clear"})
 
-        iteration       = 0
-        context_msgs    = [{"role": "user", "content": feature_request}]
-        last_outputs: Dict[str, str] = {}
+        iteration    = 0
+        base_context = [{"role": "user", "content": feature_request}]
+        last: Dict[str, str]          = {}
+        feedback: Dict[str, str]      = {}
+        all_outputs: Dict[str, str]   = {}
 
         while iteration < MAX_ITERATIONS:
             iteration += 1
             await self.send_loop_update(iteration)
             await self.sys_log(f"── Iteration {iteration}/{MAX_ITERATIONS} ──")
 
-            # ── Agent 1: Engine Architect ──────────────
-            a1_msgs = list(context_msgs)
-            if last_outputs.get("agent1"):
-                a1_msgs[-1] = {
-                    "role": "user",
-                    "content": (
-                        f"{feature_request}\n\n"
-                        f"Previous implementation to revise:\n"
-                        f"{last_outputs['agent1'][-MAX_CTX_CHARS:]}"
-                    )
-                }
+            # ── Agent 1: Engine Architect ──────────────────────────────────────
+            a1_msgs = list(base_context)
+            if last.get("agent1") and feedback.get("agent1"):
+                a1_msgs = [
+                    {"role": "user", "content": feature_request},
+                    {"role": "assistant", "content": last["agent1"][-MAX_CTX_CHARS:]},
+                    {"role": "user", "content": f"Sentinel feedback: {feedback['agent1']}. Fix these issues."},
+                ]
             resp1 = await self._run_agent("agent1", a1_msgs)
-            last_outputs["agent1"] = resp1
+            last["agent1"]        = resp1
+            all_outputs["agent1"] = resp1
+            saved = save_agent_output(project, "agent1", iteration, resp1)
+            if saved: await self.notify_files(saved)
 
-            # ── Agent 2: Renderer ──────────────────────
+            # ── Agent 2: Renderer ──────────────────────────────────────────────
+            a2_user = "Implement the rendering layer for the engine structure above."
+            if feedback.get("agent2"):
+                a2_user += f" Sentinel feedback to address: {feedback['agent2']}"
             resp2 = await self._run_agent("agent2", [
-                {"role": "user", "content": feature_request},
-                {
-                    "role": "assistant",
-                    "content": f"Engine structure from Agent 1:\n{resp1[:MAX_CTX_CHARS]}"
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        "Implement the rendering layer for the above engine structure. "
-                        + (f"Note: {last_outputs.get('agent2_feedback', '')}" if last_outputs.get('agent2_feedback') else "")
-                    )
-                },
+                {"role": "user",      "content": feature_request},
+                {"role": "assistant", "content": f"Engine structure (Agent 1):\n{resp1[:MAX_CTX_CHARS]}"},
+                {"role": "user",      "content": a2_user},
             ])
-            last_outputs["agent2"] = resp2
+            last["agent2"]        = resp2
+            all_outputs["agent2"] = resp2
+            saved = save_agent_output(project, "agent2", iteration, resp2)
+            if saved: await self.notify_files(saved)
 
-            # ── Agent 4: Sentinel ──────────────────────
+            # ── Agent 3: DOM & Input Bridge ────────────────────────────────────
+            a3_user = "Implement the DOM layer and input handling for the game above."
+            if feedback.get("agent3"):
+                a3_user += f" Sentinel feedback to address: {feedback['agent3']}"
+            resp3 = await self._run_agent("agent3", [
+                {"role": "user",      "content": feature_request},
+                {"role": "assistant", "content": (
+                    f"Engine (Agent 1):\n{resp1[:MAX_CTX_CHARS // 2]}\n\n"
+                    f"Renderer (Agent 2):\n{resp2[:MAX_CTX_CHARS // 2]}"
+                )},
+                {"role": "user",      "content": a3_user},
+            ])
+            last["agent3"]        = resp3
+            all_outputs["agent3"] = resp3
+            saved = save_agent_output(project, "agent3", iteration, resp3)
+            if saved: await self.notify_files(saved)
+
+            # ── Agent 4: Sentinel QA ───────────────────────────────────────────
             combined = (
                 f"Feature Request: {feature_request}\n\n"
                 f"=== AGENT 1 — ENGINE ARCHITECT ===\n{resp1[:MAX_CTX_CHARS]}\n\n"
-                f"=== AGENT 2 — RENDERER ===\n{resp2[:MAX_CTX_CHARS]}"
+                f"=== AGENT 2 — RENDERER ===\n{resp2[:MAX_CTX_CHARS]}\n\n"
+                f"=== AGENT 3 — DOM & INPUT BRIDGE ===\n{resp3[:MAX_CTX_CHARS]}"
             )
             sentinel_resp = await self._run_agent("agent4", [
-                {"role": "user", "content": f"Review the following implementation:\n{combined}"}
+                {"role": "user", "content": f"Review this implementation:\n{combined}"}
             ])
+            all_outputs["agent4"] = sentinel_resp
 
             verdict = self._parse_verdict(sentinel_resp)
-            await self.sys_log(f"[Sentinel] {verdict['decision'].upper()}: {verdict.get('reason', '')}")
+            await self.sys_log(
+                f"[Sentinel] {verdict['decision'].upper()}"
+                + (f": {verdict['reason']}" if verdict.get("reason") else "")
+            )
 
             if verdict["decision"] == "complete":
-                await self.sys_log(f"══ LOOP COMPLETE — {iteration} iteration(s) ══")
+                save_session_log(project, feature_request, iteration, all_outputs)
+                await self.sys_log(f"══ COMPLETE — {iteration} iteration(s) — session log saved ══")
                 await self.send_loop_update(iteration)
+                # Notify frontend of the session log file
+                session_files = list_output_files(project)
+                md_files = [f for f in session_files if f["name"].startswith("session_")]
+                for f in md_files[-1:]:
+                    await self.notify_files([{**f, "agent": "sentinel"}])
                 for aid in ["agent1", "agent2", "agent3", "agent4"]:
                     await self.send_status(aid, "IDLE")
                 return
 
-            # Route back — update context with Sentinel feedback
+            # Route back — store targeted feedback, clear other agent feedback
             route_to = verdict.get("route_to", "agent1")
             reason   = verdict.get("reason", "Revision needed")
-            await self.sys_log(f"[Sentinel] Routing → {route_to}: {reason}", "warn")
-
-            if route_to == "agent2":
-                last_outputs["agent2_feedback"] = reason
-            else:
-                context_msgs = [
-                    {"role": "user", "content": feature_request},
-                    {"role": "assistant", "content": last_outputs.get(route_to, "")[:MAX_CTX_CHARS]},
-                    {"role": "user", "content": f"The Sentinel found issues: {reason}. Fix these problems."},
-                ]
+            await self.sys_log(f"[Sentinel] → {route_to}: {reason}", "warn")
+            feedback = {route_to: reason}  # Only carry feedback for the targeted agent
 
         # Circuit breaker
+        save_session_log(project, feature_request, MAX_ITERATIONS, all_outputs)
         await self.sys_log(
-            f"[!] CIRCUIT BREAKER — max {MAX_ITERATIONS} iterations reached. Manual review required.",
+            f"[!] CIRCUIT BREAKER — {MAX_ITERATIONS} iterations reached. Session log saved.",
             "error",
         )
         for aid in ["agent1", "agent2", "agent3", "agent4"]:
