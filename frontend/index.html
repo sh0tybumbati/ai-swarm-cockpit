@@ -197,18 +197,20 @@
             <div id="cli-status-line" class="npu-status"></div>
           </div>
         </div>
-        <div class="field">
-          <label>𒀭 GPU MODEL</label>
-          <select id="modal-model-sel"></select>
-        </div>
-        <div class="field">
-          <label>𒁹 ROLE</label>
-          <select id="modal-role-sel">
-            <option value="engine_architect">AN — Engine Architect</option>
-            <option value="renderer">ENLIL — The Renderer (Shaders & Math)</option>
-            <option value="dom_bridge">ENKI — DOM & Input Bridge</option>
-            <option value="sentinel">ENZU — The Sentinel (QA & Verification)</option>
-          </select>
+        <div id="gpu-config-fields" style="display:flex; flex-direction:column; gap:14px;">
+          <div class="field">
+            <label>𒀭 OLLAMA MODEL</label>
+            <select id="modal-model-sel"></select>
+          </div>
+          <div class="field">
+            <label>𒁹 ROLE</label>
+            <select id="modal-role-sel">
+              <option value="app_architect">AN — App Architect</option>
+              <option value="renderer">ENLIL — The Renderer</option>
+              <option value="ui_integration">ENKI — UI & Integration</option>
+              <option value="sentinel">ENZU — The Sentinel</option>
+            </select>
+          </div>
         </div>
         <div class="modal-actions">
           <button onclick="applyAgentConfig()">✓ APPLY</button>

@@ -420,6 +420,7 @@ function setBackend(backend) {
   ['gpu', 'npu', 'claude', 'cli'].forEach(b => {
     document.getElementById(`btn-${b}`)?.classList.toggle('active', backend === b);
   });
+  document.getElementById('gpu-config-fields').style.display    = backend === 'gpu'    ? 'flex' : 'none';
   document.getElementById('npu-config-fields').style.display    = backend === 'npu'    ? 'flex' : 'none';
   document.getElementById('claude-config-fields').style.display = backend === 'claude' ? 'flex' : 'none';
   document.getElementById('cli-config-fields').style.display    = backend === 'cli'    ? 'flex' : 'none';
