@@ -197,8 +197,8 @@ class ConnectionManager:
     async def send_status(self, channel: str, status: str):
         await self._broadcast(channel, {"type": "status", "status": status})
 
-    async def send_loop_update(self, iteration: int):
-        await self._broadcast("console", {"type": "loop_update", "iteration": iteration, "max": MAX_ITERATIONS})
+    async def send_loop_update(self, iteration: int, max_iter: int = MAX_ITERATIONS):
+        await self._broadcast("console", {"type": "loop_update", "iteration": iteration, "max": max_iter})
 
     async def send_loop_state(self, running: bool):
         await self._broadcast("console", {"type": "loop_state", "running": running})
@@ -614,7 +614,7 @@ class SwarmOrchestrator(ConnectionManager):
 
     # ── Main swarm loop ────────────────────────────────────────────────────────
 
-    async def _swarm_loop_inner(self, feature_request: str, project: str):
+    async def _swarm_loop_inner(self, feature_request: str, project: str, max_iterations: int = MAX_ITERATIONS):
         await self._broadcast("console", {"type": "project", "name": project})
         await self.send_loop_state(True)
         await self.sys_log(f"══ SWARM START: {project} ══")
@@ -635,10 +635,10 @@ class SwarmOrchestrator(ConnectionManager):
         all_out:   Dict[str, str] = {}
         all_saved: List[str]      = []
 
-        while iteration < MAX_ITERATIONS:
+        while iteration < max_iterations:
             iteration += 1
-            await self.send_loop_update(iteration)
-            await self.sys_log(f"── Iteration {iteration}/{MAX_ITERATIONS} ──")
+            await self.send_loop_update(iteration, max_iterations)
+            await self.sys_log(f"── Iteration {iteration}/{max_iterations} ──")
 
             # Context prefix injected into Agent 1
             ctx_prefix = f"Project context from prior sessions:\n{prior_context}\n\n" if prior_context else ""
@@ -738,7 +738,7 @@ class SwarmOrchestrator(ConnectionManager):
                 save_context(project, feature_request, iteration, all_out,
                              "complete", list(dict.fromkeys(all_saved)))
                 await self.sys_log(f"══ COMPLETE — {iteration} iteration(s) — context + log saved ══")
-                await self.send_loop_update(iteration)
+                await self.send_loop_update(iteration, max_iterations)
                 await self.notify_files([{"file": "context.md", "size": 0, "agent": "sentinel"}])
                 for aid in ["agent1", "agent2", "agent3", "agent4"]:
                     await self.send_status(aid, "IDLE")
@@ -752,17 +752,17 @@ class SwarmOrchestrator(ConnectionManager):
             base_ctx = [{"role": "user", "content": feature_request}]
 
         # Circuit breaker
-        save_session_log(project, feature_request, MAX_ITERATIONS, all_out)
-        save_context(project, feature_request, MAX_ITERATIONS, all_out,
+        save_session_log(project, feature_request, max_iterations, all_out)
+        save_context(project, feature_request, max_iterations, all_out,
                      "circuit_breaker", list(dict.fromkeys(all_saved)))
-        await self.sys_log(f"[!] CIRCUIT BREAKER — {MAX_ITERATIONS} iterations. Context saved.", "error")
+        await self.sys_log(f"[!] CIRCUIT BREAKER — {max_iterations} iterations. Context saved.", "error")
         for aid in ["agent1", "agent2", "agent3", "agent4"]:
             await self.send_status(aid, "IDLE")
         await self.send_loop_state(False)
 
-    async def run_swarm_loop(self, feature_request: str, project: str):
+    async def run_swarm_loop(self, feature_request: str, project: str, max_iterations: int = MAX_ITERATIONS):
         try:
-            await self._swarm_loop_inner(feature_request, project)
+            await self._swarm_loop_inner(feature_request, project, max_iterations)
         except asyncio.CancelledError:
             await self.sys_log("[!] Swarm loop cancelled", "warn")
             for aid in ["agent1", "agent2", "agent3", "agent4"]:

@@ -247,8 +247,9 @@ window.addEventListener('message', (e) => {
 
 async function sendCommand(event) {
   if (event) event.preventDefault();
-  const prompt  = document.getElementById('cmd-input').value.trim();
-  const project = document.getElementById('project-input').value.trim() || currentProject;
+  const prompt     = document.getElementById('cmd-input').value.trim();
+  const project    = document.getElementById('project-input').value.trim() || currentProject;
+  const maxLoops   = parseInt(document.getElementById('max-loops-input').value) || 6;
   if (!prompt || loopRunning) return;
 
   // Save to history
@@ -270,7 +271,7 @@ async function sendCommand(event) {
     const res  = await fetch(`${API_BASE}/broadcast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, project })
+      body: JSON.stringify({ prompt, project, max_iterations: maxLoops })
     });
     const data = await res.json();
     sysLog(`[CMD] ${data.status || data.error}`);
@@ -555,15 +556,13 @@ async function applyAgentConfig() {
   if (!currentModalAgent) return;
   const agentId = currentModalAgent;
   const model   = document.getElementById('modal-model-sel').value;
-  const role    = document.getElementById('modal-role-sel').value;
 
   try {
-    // Save GPU model + role
     if (model) {
       await fetch(`${API_BASE}/agents/${agentId}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, role })
+        body: JSON.stringify({ model })
       });
       document.getElementById(`model-label-${agentId}`)
               .childNodes[0].textContent = model + ' ';

@@ -451,6 +451,14 @@ body {
 #project-input { width: 150px; font-size: 12px; }
 #project-input:focus { border-color: var(--cyan); }
 
+.loop-label { font-size: 10px; opacity: .5; letter-spacing: .1em; white-space: nowrap; }
+#max-loops-input {
+  width: 46px; font-size: 12px; text-align: center;
+  background: var(--bg-panel); border: 1px solid rgba(232,184,0,.3);
+  color: var(--gold); padding: 4px 6px; border-radius: 3px;
+}
+#max-loops-input:focus { outline: none; border-color: var(--gold); }
+
 #send-btn {
   background: rgba(232,184,0,.12);
   border: 1px solid var(--gold);

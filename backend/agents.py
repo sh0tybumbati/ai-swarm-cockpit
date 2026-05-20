@@ -19,7 +19,7 @@ CLAUDE_CONFIG: dict = {
 # Uses your Claude subscription (Pro/Max) — no API key needed.
 # Requires `claude` CLI installed: npm install -g @anthropic-ai/claude-code
 CLAUDE_CLI_CONFIG: dict = {
-    "model":    os.environ.get("CLAUDE_CLI_MODEL", "claude-opus-4-7"),
+    "model":    os.environ.get("CLAUDE_CLI_MODEL", "claude-sonnet-4-6"),
     "bin":      os.environ.get("CLAUDE_BIN", "claude"),   # path to claude binary
     "timeout":  int(os.environ.get("CLAUDE_CLI_TIMEOUT", "300")),
 }

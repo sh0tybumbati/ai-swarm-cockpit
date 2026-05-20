@@ -72,11 +72,12 @@ async def ws_endpoint(websocket: WebSocket, channel: str):
 
 @app.post("/broadcast")
 async def broadcast(payload: dict):
-    prompt  = (payload.get("prompt") or "").strip()
-    project = (payload.get("project") or "New Project").strip()
+    prompt      = (payload.get("prompt") or "").strip()
+    project     = (payload.get("project") or "New Project").strip()
+    max_iters   = int(payload.get("max_iterations") or 12)
     if not prompt:
         return JSONResponse({"error": "prompt is required"}, status_code=400)
-    task = asyncio.create_task(orchestrator.run_swarm_loop(prompt, project))
+    task = asyncio.create_task(orchestrator.run_swarm_loop(prompt, project, max_iters))
     orchestrator._active_task = task
     return {"status": f"Swarm loop initiated: {prompt[:60]}"}
 
