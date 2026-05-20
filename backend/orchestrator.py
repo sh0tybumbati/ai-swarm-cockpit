@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -58,11 +59,18 @@ def _safe_name(project: str) -> str:
 
 
 def extract_code_blocks(text: str) -> List[Dict]:
-    pattern = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)
-    return [
-        {"lang": lang or "js", "ext": LANG_EXT.get(lang.lower(), "txt"), "code": code.strip()}
-        for lang, code in pattern.findall(text)
-    ]
+    # Supports ```lang:filename.ext or plain ```lang
+    pattern = re.compile(r"```(\w*)(?::([^\n]+))?\n(.*?)```", re.DOTALL)
+    blocks = []
+    for lang, filename, code in pattern.findall(text):
+        lang = lang or "js"
+        blocks.append({
+            "lang": lang,
+            "ext": LANG_EXT.get(lang.lower(), "txt"),
+            "code": code.strip(),
+            "filename": filename.strip() if filename else None,
+        })
+    return blocks
 
 
 def save_agent_output(project: str, agent_id: str, iteration: int, text: str) -> List[Dict]:
@@ -73,9 +81,18 @@ def save_agent_output(project: str, agent_id: str, iteration: int, text: str) ->
     proj_dir = OUTPUT_BASE / _safe_name(project)
     proj_dir.mkdir(parents=True, exist_ok=True)
     saved = []
+    seen: set = set()
     for i, block in enumerate(blocks):
-        suffix   = f"_{i + 1}" if len(blocks) > 1 else ""
-        filename = f"{prefix}{suffix}.{block['ext']}"
+        if block.get("filename"):
+            filename = block["filename"]
+        else:
+            suffix   = f"_{i + 1}" if len(blocks) > 1 else ""
+            filename = f"{prefix}{suffix}.{block['ext']}"
+        # Deduplicate within one agent's output
+        if filename in seen:
+            base, _, ext = filename.rpartition(".")
+            filename = f"{base}_{i + 1}.{ext}"
+        seen.add(filename)
         (proj_dir / filename).write_text(block["code"], encoding="utf-8")
         saved.append({"file": filename, "size": len(block["code"]), "lang": block["lang"], "agent": agent_id})
     return saved
@@ -299,6 +316,8 @@ class SwarmOrchestrator(ConnectionManager):
                         await self.send_status(agent_id, "ERROR")
                         await self.sys_log(err, "error")
                         return ""
+                    tok_count  = 0
+                    start_time = time.monotonic()
                     async for raw in resp.aiter_lines():
                         raw = raw.strip()
                         if not raw or raw == "data: [DONE]":
@@ -310,7 +329,12 @@ class SwarmOrchestrator(ConnectionManager):
                                         .get("delta", {}).get("content", "")
                             if token:
                                 output += token
+                                tok_count += 1
                                 await self.send_token(agent_id, token)
+                                if tok_count % 8 == 0:
+                                    elapsed = time.monotonic() - start_time
+                                    if elapsed > 0.05:
+                                        await self._broadcast(agent_id, {"type": "tps", "value": round(tok_count / elapsed, 1)})
                         except json.JSONDecodeError:
                             continue
         except asyncio.CancelledError:
@@ -325,6 +349,7 @@ class SwarmOrchestrator(ConnectionManager):
         except Exception as exc:
             await self.send_token(agent_id, f"\n[ERROR] {exc}\n")
 
+        await self._broadcast(agent_id, {"type": "tps", "value": 0})
         await self.send_status(agent_id, "DONE")
         await self.send_token(agent_id, "\n")
         return output
@@ -517,6 +542,8 @@ class SwarmOrchestrator(ConnectionManager):
                         await self.send_token(agent_id, f"\n[ERROR] {err}\n")
                         await self.send_status(agent_id, "ERROR")
                         return ""
+                    tok_count  = 0
+                    start_time = time.monotonic()
                     async for line in resp.aiter_lines():
                         if not line.strip():
                             continue
@@ -525,7 +552,12 @@ class SwarmOrchestrator(ConnectionManager):
                             token = data.get("message", {}).get("content", "")
                             if token:
                                 output += token
+                                tok_count += 1
                                 await self.send_token(agent_id, token)
+                                if tok_count % 8 == 0:
+                                    elapsed = time.monotonic() - start_time
+                                    if elapsed > 0.05:
+                                        await self._broadcast(agent_id, {"type": "tps", "value": round(tok_count / elapsed, 1)})
                             if data.get("done"):
                                 break
                         except json.JSONDecodeError:
@@ -542,9 +574,31 @@ class SwarmOrchestrator(ConnectionManager):
         except Exception as exc:
             await self.send_token(agent_id, f"\n[ERROR] {exc}\n")
 
+        await self._broadcast(agent_id, {"type": "tps", "value": 0})
         await self.send_status(agent_id, "DONE")
         await self.send_token(agent_id, "\n")
         return output
+
+    # ── Deliverable parser ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_deliverable(text: str) -> dict:
+        """Extract declared filenames and run command from AN's DELIVERABLE block."""
+        files, run_cmd, in_block = [], "", False
+        for line in text.splitlines():
+            s = line.strip()
+            if "## DELIVERABLE" in s.upper():
+                in_block = True
+                continue
+            if in_block:
+                if s.startswith("##"):
+                    break
+                if s.lower().startswith("files:"):
+                    raw = s.split(":", 1)[1].strip()
+                    files = [f.strip().strip(",") for f in re.split(r"[\s,]+", raw) if f.strip()]
+                elif s.lower().startswith("run:"):
+                    run_cmd = s.split(":", 1)[1].strip()
+        return {"files": files, "run": run_cmd}
 
     # ── Route parser ──────────────────────────────────────────────────────────
 
@@ -667,10 +721,18 @@ class SwarmOrchestrator(ConnectionManager):
             all_saved.extend(f["file"] for f in saved)
             if saved: await self.notify_files(saved)
 
-            # Parse AN's routing decision
-            route = self._parse_route(resp1)
+            # Parse AN's routing decision and file manifest
+            route      = self._parse_route(resp1)
+            deliverable = self._parse_deliverable(resp1)
             await self.sys_log(
                 f"[AN] ROUTE → {', '.join(route).upper() or 'ENZU only (self-contained)'}", "info"
+            )
+            if deliverable["files"]:
+                await self.sys_log(f"[AN] FILES → {', '.join(deliverable['files'])}", "info")
+            file_note = (
+                f"\nFile manifest declared by AN: {', '.join(deliverable['files'])}. "
+                "Use these exact filenames in your code fences (e.g. ```css:style.css)."
+                if deliverable["files"] else ""
             )
 
             # ── ENLIL: Renderer ────────────────────────────────────────────────
@@ -680,7 +742,7 @@ class SwarmOrchestrator(ConnectionManager):
                 resp2 = await self._run_agent("agent2", [
                     {"role": "user",      "content": feature_request},
                     {"role": "assistant", "content": f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS]}"},
-                    {"role": "user",      "content": f"AN has assigned you a task in the PLAN section above. Implement it now.{a2_note}"},
+                    {"role": "user",      "content": f"AN has assigned you a task in the PLAN section above. Implement it now.{file_note}{a2_note}"},
                 ])
                 last["agent2"] = all_out["agent2"] = resp2
                 saved = save_agent_output(project, "agent2", iteration, resp2)
@@ -703,7 +765,8 @@ class SwarmOrchestrator(ConnectionManager):
                     )},
                     {"role": "user", "content": (
                         f"AN has assigned you a task in the PLAN section above. Implement it now"
-                        f"{', integrating with ENLIL\\'s work' if resp2 else ''}.{a3_note}"
+                        f"{', integrating with ENLIL\\'s work' if resp2 else ''}."
+                        f"{file_note}{a3_note}"
                     )},
                 ])
                 last["agent3"] = all_out["agent3"] = resp3

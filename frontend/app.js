@@ -78,9 +78,25 @@ function handleMsg(channel, msg) {
     case 'clear':
       clearStream(channel);
       break;
+    case 'tps':
+      updateTps(channel, msg.value ?? 0);
+      break;
     case 'ping':
       sockets[channel]?.send('pong');
       break;
+  }
+}
+
+function updateTps(agentId, value) {
+  const valEl  = document.getElementById(`tps-val-${agentId}`);
+  const fillEl = document.getElementById(`tps-fill-${agentId}`);
+  if (!valEl || !fillEl) return;
+  if (value <= 0) {
+    valEl.textContent = '—';
+    fillEl.style.width = '0%';
+  } else {
+    valEl.textContent = value.toFixed(1);
+    fillEl.style.width = Math.min(100, (value / 80) * 100) + '%'; // 80 t/s = full bar
   }
 }
 

@@ -56,7 +56,9 @@ AGENTS: dict = {
             "TypeScript cannot run in a browser without a compiler and will produce a broken deliverable. "
             "Only reach for a build system (Vite, webpack, tsc) when the project genuinely requires it.\n\n"
             "Be explicit about the exact variable names, function signatures, and DOM element IDs "
-            "you expose so ENLIL and ENKI can integrate without guessing.\n\n"
+            "you expose so ENLIL and ENKI can integrate without guessing.\n"
+            "Label every code block with its filename: ```html:index.html or ```js:game.js — "
+            "this is how files get saved with the right names.\n\n"
             "End your response with:\n"
             "ROUTE: agent2,agent3\n"
             "Include agent2 if ENLIL has real visual work. Include agent3 if ENKI has entry-point/wiring work. "
@@ -83,6 +85,7 @@ AGENTS: dict = {
             "3. Use the exact variable names, class names, and interfaces AN defined. "
             "Do not invent your own structure — ENKI must be able to assemble your output with AN's logic.\n"
             "4. Output complete, working visual code. No placeholder styles, no empty components.\n\n"
+            "Label every code block with its filename: ```css:style.css or ```js:renderer.js\n"
             "Output ONLY code with brief inline comments. Be concise and production-ready."
         ),
     },
@@ -109,6 +112,7 @@ AGENTS: dict = {
             "You ARE the assembler. The output of this iteration must be runnable as-is.\n"
             "4. Test your mental model: if a user downloaded only your output files and ran them, "
             "would the project work? If not, fix it until it would.\n\n"
+            "Label every code block with its filename: ```html:index.html or ```js:main.js\n"
             "Output ONLY code with brief inline comments. Be concise and production-ready."
         ),
     },
