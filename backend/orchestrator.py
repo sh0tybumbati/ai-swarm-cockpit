@@ -133,7 +133,7 @@ def save_context(project: str, feature: str, iteration: int,
 ## Feature Worked On
 {feature}
 
-## Architectural Notes (from AN — Engine Architect)
+## Architectural Notes (from AN — {AGENTS['agent1']['name']})
 {decisions}
 
 ## Generated Files
@@ -623,7 +623,7 @@ class SwarmOrchestrator(ConnectionManager):
             # Context prefix injected into Agent 1
             ctx_prefix = f"Project context from prior sessions:\n{prior_context}\n\n" if prior_context else ""
 
-            # ── AN: Engine Architect ───────────────────────────────────────────
+            # ── AN: App Architect ─────────────────────────────────────────────
             a1_msgs = list(base_ctx)
             if last.get("agent1") and feedback.get("agent1"):
                 a1_msgs = [
@@ -644,23 +644,23 @@ class SwarmOrchestrator(ConnectionManager):
             a2_note = f" ENZU feedback: {feedback['agent2']}" if feedback.get("agent2") else ""
             resp2 = await self._run_agent("agent2", [
                 {"role": "user",      "content": feature_request},
-                {"role": "assistant", "content": f"Engine structure (AN):\n{resp1[:MAX_CTX_CHARS]}"},
-                {"role": "user",      "content": f"Implement the rendering layer.{a2_note}"},
+                {"role": "assistant", "content": f"{AGENTS['agent1']['name']} (AN) output:\n{resp1[:MAX_CTX_CHARS]}"},
+                {"role": "user",      "content": f"Implement the visual and rendering layer.{a2_note}"},
             ])
             last["agent2"] = all_out["agent2"] = resp2
             saved = save_agent_output(project, "agent2", iteration, resp2)
             all_saved.extend(f["file"] for f in saved)
             if saved: await self.notify_files(saved)
 
-            # ── ENKI: DOM & Input Bridge ───────────────────────────────────────
+            # ── ENKI: UI & Integration ────────────────────────────────────────
             a3_note = f" ENZU feedback: {feedback['agent3']}" if feedback.get("agent3") else ""
             resp3 = await self._run_agent("agent3", [
                 {"role": "user",      "content": feature_request},
                 {"role": "assistant", "content": (
-                    f"Engine (AN):\n{resp1[:MAX_CTX_CHARS // 2]}\n\n"
-                    f"Renderer (ENLIL):\n{resp2[:MAX_CTX_CHARS // 2]}"
+                    f"{AGENTS['agent1']['name']} (AN):\n{resp1[:MAX_CTX_CHARS // 2]}\n\n"
+                    f"{AGENTS['agent2']['name']} (ENLIL):\n{resp2[:MAX_CTX_CHARS // 2]}"
                 )},
-                {"role": "user", "content": f"Implement DOM layer and input handling.{a3_note}"},
+                {"role": "user", "content": f"Implement the UI and integration layer.{a3_note}"},
             ])
             last["agent3"] = all_out["agent3"] = resp3
             saved = save_agent_output(project, "agent3", iteration, resp3)
@@ -670,9 +670,9 @@ class SwarmOrchestrator(ConnectionManager):
             # ── ENZU: Sentinel ─────────────────────────────────────────────────
             combined = (
                 f"Feature: {feature_request}\n\n"
-                f"=== AN (Engine) ===\n{resp1[:MAX_CTX_CHARS]}\n\n"
-                f"=== ENLIL (Renderer) ===\n{resp2[:MAX_CTX_CHARS]}\n\n"
-                f"=== ENKI (DOM Bridge) ===\n{resp3[:MAX_CTX_CHARS]}"
+                f"=== AN ({AGENTS['agent1']['name']}) ===\n{resp1[:MAX_CTX_CHARS]}\n\n"
+                f"=== ENLIL ({AGENTS['agent2']['name']}) ===\n{resp2[:MAX_CTX_CHARS]}\n\n"
+                f"=== ENKI ({AGENTS['agent3']['name']}) ===\n{resp3[:MAX_CTX_CHARS]}"
             )
             sentinel_resp = await self._run_agent("agent4", [
                 {"role": "user", "content": f"Review this implementation:\n{combined}"}
