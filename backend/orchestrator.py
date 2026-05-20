@@ -641,11 +641,11 @@ class SwarmOrchestrator(ConnectionManager):
             if saved: await self.notify_files(saved)
 
             # ── ENLIL: Renderer ────────────────────────────────────────────────
-            a2_note = f" ENZU feedback: {feedback['agent2']}" if feedback.get("agent2") else ""
+            a2_note = f"\nENZU feedback: {feedback['agent2']}" if feedback.get("agent2") else ""
             resp2 = await self._run_agent("agent2", [
                 {"role": "user",      "content": feature_request},
-                {"role": "assistant", "content": f"{AGENTS['agent1']['name']} (AN) output:\n{resp1[:MAX_CTX_CHARS]}"},
-                {"role": "user",      "content": f"Implement the visual and rendering layer.{a2_note}"},
+                {"role": "assistant", "content": f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS]}"},
+                {"role": "user",      "content": f"AN has assigned you a task in the PLAN section above. Implement it now.{a2_note}"},
             ])
             last["agent2"] = all_out["agent2"] = resp2
             saved = save_agent_output(project, "agent2", iteration, resp2)
@@ -653,14 +653,14 @@ class SwarmOrchestrator(ConnectionManager):
             if saved: await self.notify_files(saved)
 
             # ── ENKI: UI & Integration ────────────────────────────────────────
-            a3_note = f" ENZU feedback: {feedback['agent3']}" if feedback.get("agent3") else ""
+            a3_note = f"\nENZU feedback: {feedback['agent3']}" if feedback.get("agent3") else ""
             resp3 = await self._run_agent("agent3", [
                 {"role": "user",      "content": feature_request},
                 {"role": "assistant", "content": (
-                    f"{AGENTS['agent1']['name']} (AN):\n{resp1[:MAX_CTX_CHARS // 2]}\n\n"
-                    f"{AGENTS['agent2']['name']} (ENLIL):\n{resp2[:MAX_CTX_CHARS // 2]}"
+                    f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS // 2]}\n\n"
+                    f"ENLIL's rendering implementation:\n{resp2[:MAX_CTX_CHARS // 2]}"
                 )},
-                {"role": "user", "content": f"Implement the UI and integration layer.{a3_note}"},
+                {"role": "user", "content": f"AN has assigned you a task in the PLAN section above. Implement it now, integrating with ENLIL's work.{a3_note}"},
             ])
             last["agent3"] = all_out["agent3"] = resp3
             saved = save_agent_output(project, "agent3", iteration, resp3)
