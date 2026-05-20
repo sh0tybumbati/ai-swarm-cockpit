@@ -112,6 +112,7 @@
         <div class="agent-deity">ENZU</div>
         <div class="agent-role">The Sentinel</div>
         <div class="agent-model" id="model-label-agent4">Mistral-7B-v0.3 <span class="model-dot" id="mdot-agent4" title="Model status">●</span></div>
+        <div class="backend-badge" id="backend-badge-agent4" title="Inference backend">GPU</div>
         <div class="agent-status-row">
           <span class="led" id="led-agent4"></span>
           <span class="led-label" id="status-agent4">IDLE</span>
@@ -145,8 +146,27 @@
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body">
+        <!-- NPU section — only shown for ENZU (agent4) -->
+        <div class="field npu-section" id="npu-section" style="display:none">
+          <label>⚡ INFERENCE BACKEND</label>
+          <div class="backend-toggle">
+            <button id="btn-gpu" class="backend-opt active" onclick="setBackend('gpu')">GPU — Ollama</button>
+            <button id="btn-npu" class="backend-opt" onclick="setBackend('npu')">NPU — FastFlowLM</button>
+          </div>
+          <div id="npu-config-fields" style="display:none; margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+            <div class="field">
+              <label>NPU HOST</label>
+              <input type="text" id="npu-host-input" placeholder="http://localhost:8080" />
+            </div>
+            <div class="field">
+              <label>NPU MODEL</label>
+              <input type="text" id="npu-model-input" placeholder="fastflow-lm" />
+            </div>
+            <div id="npu-status-line" class="npu-status"></div>
+          </div>
+        </div>
         <div class="field">
-          <label>𒀭 MODEL</label>
+          <label>𒀭 GPU MODEL</label>
           <select id="modal-model-sel"></select>
         </div>
         <div class="field">

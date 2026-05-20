@@ -1,4 +1,12 @@
 # Agent definitions for the Panoptic AI Swarm Cockpit
+import os
+
+# ── NPU inference config (FastFlowLM) ──────────────────
+# Override via env vars or POST /npu/config
+NPU_CONFIG: dict = {
+    "host":  os.environ.get("FASTFLOW_HOST",  "http://localhost:8080"),
+    "model": os.environ.get("FASTFLOW_MODEL", "fastflow-lm"),
+}
 
 AGENTS: dict = {
     "agent1": {
@@ -57,6 +65,7 @@ AGENTS: dict = {
         "deity": "ENZU",
         "emoji": "👁️",
         "color": "#b44ff5",
+        "backend": "gpu",   # "gpu" | "npu"  — only agent4 supports NPU
         "system": (
             "You are The Sentinel — QA and verification agent for a web game development swarm.\n\n"
             "Review the code from the other agents and respond with EXACTLY one of these two verdicts:\n\n"

@@ -12,7 +12,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from agents import AGENTS
+from agents import AGENTS, NPU_CONFIG
 from orchestrator import (OUTPUT_BASE, SwarmOrchestrator,
                           list_output_files, load_context, save_context,
                           _safe_name)
@@ -166,6 +166,40 @@ async def download_file(project: str, filename: str):
                    ".json": "application/json"}
     media = media_types.get(filepath.suffix, "text/plain")
     return FileResponse(filepath, media_type=media, filename=safe_file)
+
+
+# ── NPU config & health ───────────────────────────────────────────────────────
+
+@app.get("/npu/config")
+async def get_npu_config():
+    return {**NPU_CONFIG, "backend": AGENTS["agent4"].get("backend", "gpu")}
+
+
+@app.post("/npu/config")
+async def set_npu_config(payload: dict):
+    if "host"  in payload: NPU_CONFIG["host"]  = payload["host"].rstrip("/")
+    if "model" in payload: NPU_CONFIG["model"] = payload["model"]
+    return {"status": "updated", "config": NPU_CONFIG}
+
+
+@app.post("/npu/backend")
+async def set_agent4_backend(payload: dict):
+    backend = payload.get("backend", "gpu")
+    if backend not in ("gpu", "npu"):
+        return JSONResponse({"error": "backend must be 'gpu' or 'npu'"}, status_code=400)
+    AGENTS["agent4"]["backend"] = backend
+    return {"status": "updated", "agent4_backend": backend}
+
+
+@app.get("/npu/health")
+async def npu_health():
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        try:
+            resp = await client.get(f"{NPU_CONFIG['host']}/v1/models")
+            models = [m.get("id", "") for m in resp.json().get("data", [])]
+            return {"online": True, "host": NPU_CONFIG["host"], "models": models}
+        except Exception as exc:
+            return {"online": False, "host": NPU_CONFIG["host"], "error": str(exc)}
 
 
 @app.get("/health")

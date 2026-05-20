@@ -18,7 +18,7 @@ from typing import Dict, List, Optional
 
 import httpx
 from fastapi import WebSocket
-from agents import AGENTS
+from agents import AGENTS, NPU_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -250,15 +250,85 @@ class SwarmOrchestrator(ConnectionManager):
         finally:
             await self.send_loop_state(False)
 
-    # ── Ollama streaming ───────────────────────────────────────────────────────
+    # ── Inference dispatch ─────────────────────────────────────────────────────
 
     async def _run_agent(self, agent_id: str, messages: list) -> str:
+        """Route to GPU (Ollama) or NPU (FastFlowLM) based on agent backend setting."""
+        if AGENTS[agent_id].get("backend") == "npu":
+            return await self._run_npu(agent_id, messages)
+        return await self._run_gpu(agent_id, messages)
+
+    # ── NPU streaming — FastFlowLM (OpenAI-compatible) ─────────────────────────
+
+    async def _run_npu(self, agent_id: str, messages: list) -> str:
+        agent     = AGENTS[agent_id]
+        npu_host  = NPU_CONFIG["host"]
+        npu_model = NPU_CONFIG["model"]
+        output    = ""
+
+        await self.send_status(agent_id, "WORKING")
+        await self._broadcast(agent_id, {"type": "backend", "backend": "npu"})
+        await self.sys_log(f"[{agent.get('deity', agent['name'])}] ▸ NPU: {npu_model}")
+
+        payload = {
+            "model": npu_model,
+            "messages": [{"role": "system", "content": agent["system"]}] + messages,
+            "stream": True,
+            "temperature": 0.25,
+            "max_tokens": 4096,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+                async with client.stream(
+                    "POST", f"{npu_host}/v1/chat/completions", json=payload
+                ) as resp:
+                    if resp.status_code != 200:
+                        err = f"FastFlowLM HTTP {resp.status_code}"
+                        await self.send_token(agent_id, f"\n[ERROR] {err}\n")
+                        await self.send_status(agent_id, "ERROR")
+                        await self.sys_log(err, "error")
+                        return ""
+                    async for raw in resp.aiter_lines():
+                        raw = raw.strip()
+                        if not raw or raw == "data: [DONE]":
+                            continue
+                        line = raw.removeprefix("data: ")
+                        try:
+                            data  = json.loads(line)
+                            token = (data.get("choices") or [{}])[0] \
+                                        .get("delta", {}).get("content", "")
+                            if token:
+                                output += token
+                                await self.send_token(agent_id, token)
+                        except json.JSONDecodeError:
+                            continue
+        except asyncio.CancelledError:
+            await self.send_token(agent_id, "\n[ABORTED]\n")
+            raise
+        except httpx.ConnectError:
+            msg = f"Cannot reach FastFlowLM at {npu_host} — is the NPU server running?"
+            await self.send_token(agent_id, f"\n[ERROR] {msg}\n")
+            await self.sys_log(msg, "error")
+        except httpx.ReadTimeout:
+            await self.send_token(agent_id, "\n[ERROR] NPU inference timed out\n")
+        except Exception as exc:
+            await self.send_token(agent_id, f"\n[ERROR] {exc}\n")
+
+        await self.send_status(agent_id, "DONE")
+        await self.send_token(agent_id, "\n")
+        return output
+
+    # ── GPU streaming — Ollama ─────────────────────────────────────────────────
+
+    async def _run_gpu(self, agent_id: str, messages: list) -> str:
         agent  = AGENTS[agent_id]
         model  = agent["model"]
         output = ""
 
         await self.send_status(agent_id, "WORKING")
-        await self.sys_log(f"[{agent.get('deity', agent['name'])}] ▸ {model}")
+        await self._broadcast(agent_id, {"type": "backend", "backend": "gpu"})
+        await self.sys_log(f"[{agent.get('deity', agent['name'])}] ▸ GPU: {model}")
 
         payload = {
             "model": model,

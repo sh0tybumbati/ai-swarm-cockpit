@@ -12,6 +12,8 @@ let currentProject    = 'ENMERKAR';
 let savedFilesCount   = 0;
 let loopRunning       = false;
 let autoRefresh       = false;
+let agent4Backend     = 'gpu';   // 'gpu' | 'npu'
+let modalBackend      = 'gpu';   // tracks selection inside modal
 
 // ── Command history ────────────────────────────────────
 let cmdHistory  = JSON.parse(localStorage.getItem('swarm_cmd_history') || '[]');
@@ -66,6 +68,9 @@ function handleMsg(channel, msg) {
       break;
     case 'console_line':
       appendConsoleLine(msg.message, msg.level || 'log');
+      break;
+    case 'backend':
+      if (channel === 'agent4') updateBackendBadge(msg.backend);
       break;
     case 'file_saved':
       onFileSaved(msg);
@@ -364,6 +369,49 @@ async function checkModelStatus() {
   }
 }
 
+// ── NPU backend controls ───────────────────────────────
+
+function updateBackendBadge(backend) {
+  agent4Backend = backend;
+  const badge = document.getElementById('backend-badge-agent4');
+  const prof  = document.getElementById('profile-agent4');
+  const cli   = document.querySelector('.cli-block.a4-cli');
+  if (!badge) return;
+  badge.textContent = backend.toUpperCase();
+  badge.className   = `backend-badge${backend === 'npu' ? ' npu' : ''}`;
+  prof?.classList.toggle('npu-active', backend === 'npu');
+  cli?.classList.toggle('npu-active',  backend === 'npu');
+}
+
+function setBackend(backend) {
+  modalBackend = backend;
+  document.getElementById('btn-gpu').classList.toggle('active', backend === 'gpu');
+  document.getElementById('btn-npu').classList.toggle('active', backend === 'npu');
+  const npuFields = document.getElementById('npu-config-fields');
+  npuFields.style.display = backend === 'npu' ? 'flex' : 'none';
+  if (backend === 'npu') checkNpuHealth();
+}
+
+async function checkNpuHealth() {
+  const statusEl = document.getElementById('npu-status-line');
+  statusEl.textContent = 'Checking NPU server…';
+  statusEl.className   = 'npu-status';
+  try {
+    const res  = await fetch(`${API_BASE}/npu/health`);
+    const data = await res.json();
+    if (data.online) {
+      statusEl.textContent = `● ONLINE — ${data.models?.join(', ') || 'models loaded'}`;
+      statusEl.className   = 'npu-status online';
+    } else {
+      statusEl.textContent = `○ OFFLINE — ${data.error || 'server not reachable'}`;
+      statusEl.className   = 'npu-status offline';
+    }
+  } catch {
+    statusEl.textContent = '○ Backend unreachable';
+    statusEl.className   = 'npu-status offline';
+  }
+}
+
 // ── Agent config modal ─────────────────────────────────
 
 async function openModal(agentId) {
@@ -371,6 +419,22 @@ async function openModal(agentId) {
   const names = { agent1: 'AN', agent2: 'ENLIL', agent3: 'ENKI', agent4: 'ENZU' };
   document.getElementById('modal-title').textContent = `⚙ CONFIGURE ${names[agentId] || agentId}`;
   document.getElementById('modal-overlay').classList.add('open');
+
+  // Show NPU section only for ENZU
+  const npuSection = document.getElementById('npu-section');
+  npuSection.style.display = agentId === 'agent4' ? 'flex' : 'none';
+
+  if (agentId === 'agent4') {
+    // Load current NPU config
+    try {
+      const res  = await fetch(`${API_BASE}/npu/config`);
+      const data = await res.json();
+      document.getElementById('npu-host-input').value  = data.host  || 'http://localhost:8080';
+      document.getElementById('npu-model-input').value = data.model || 'fastflow-lm';
+      modalBackend = data.backend || 'gpu';
+      setBackend(modalBackend);
+    } catch { /* use defaults */ }
+  }
 
   const sel = document.getElementById('modal-model-sel');
   sel.innerHTML = '<option>Loading…</option>';
@@ -395,15 +459,44 @@ async function applyAgentConfig() {
   if (!currentModalAgent) return;
   const model = document.getElementById('modal-model-sel').value;
   const role  = document.getElementById('modal-role-sel').value;
-  if (!model) { closeModal(); return; }
+
   try {
-    await fetch(`${API_BASE}/agents/${currentModalAgent}/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, role })
-    });
-    document.getElementById(`model-label-${currentModalAgent}`).childNodes[0].textContent = model + ' ';
-    sysLog(`[CFG] ${currentModalAgent} → ${model}`);
+    // Save GPU model + role
+    if (model) {
+      await fetch(`${API_BASE}/agents/${currentModalAgent}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, role })
+      });
+      document.getElementById(`model-label-${currentModalAgent}`)
+              .childNodes[0].textContent = model + ' ';
+    }
+
+    // Save NPU settings if this is ENZU
+    if (currentModalAgent === 'agent4') {
+      const npuHost  = document.getElementById('npu-host-input').value.trim();
+      const npuModel = document.getElementById('npu-model-input').value.trim();
+
+      if (npuHost || npuModel) {
+        await fetch(`${API_BASE}/npu/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host: npuHost, model: npuModel })
+        });
+      }
+
+      await fetch(`${API_BASE}/npu/backend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backend: modalBackend })
+      });
+
+      updateBackendBadge(modalBackend);
+      sysLog(`[CFG] ENZU backend → ${modalBackend.toUpperCase()}${modalBackend === 'npu' ? ` (${npuModel || 'fastflow-lm'})` : ` (${model})`}`);
+    } else {
+      sysLog(`[CFG] ${currentModalAgent} → ${model}`);
+    }
+
     await checkModelStatus();
   } catch (err) {
     sysLog(`[CFG] Update failed: ${err.message}`, 'error');
@@ -478,3 +571,9 @@ sysLog('𒀭 AN  𒂗𒍪 ENLIL  𒂗𒆳 ENKI  𒂗𒍪 ENZU — standing by');
 // Check model availability on load, then every 60s
 checkModelStatus();
 setInterval(checkModelStatus, 60_000);
+
+// Load ENZU backend state
+fetch(`${API_BASE}/npu/config`)
+  .then(r => r.json())
+  .then(d => updateBackendBadge(d.backend || 'gpu'))
+  .catch(() => {});
