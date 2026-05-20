@@ -67,17 +67,17 @@ body {
 }
 
 /* ── Explicit cell placement ── */
-.profile-block.a1  { grid-column: 1;        grid-row: 1 / span 2; z-index: 2; position: relative; }
-.cli-block.a1-cli  { grid-column: 2;        grid-row: 1 / span 2; z-index: 2; position: relative; }
-.top-console       { grid-column: 3;        grid-row: 1;          z-index: 2; position: relative; }
-.cli-block.a2-cli  { grid-column: 4;        grid-row: 1 / span 2; z-index: 2; position: relative; }
-.profile-block.a2  { grid-column: 5;        grid-row: 1 / span 2; z-index: 2; position: relative; }
+.profile-block.a1  { grid-column: 1;          grid-row: 1 / span 2; z-index: 2; position: relative; }
+.cli-block.a1-cli  { grid-column: 2;          grid-row: 1;          z-index: 2; position: relative; }
+.top-console       { grid-column: 3;          grid-row: 1;          z-index: 2; position: relative; }
+.cli-block.a2-cli  { grid-column: 4;          grid-row: 1;          z-index: 2; position: relative; }
+.profile-block.a2  { grid-column: 5;          grid-row: 1 / span 2; z-index: 2; position: relative; }
 .render-window     { grid-column: 2 / span 3; grid-row: 2 / span 3; z-index: 1; position: relative; }
-.profile-block.a3  { grid-column: 1;        grid-row: 4 / span 2; z-index: 2; position: relative; }
-.cli-block.a3-cli  { grid-column: 2;        grid-row: 4 / span 2; z-index: 2; position: relative; }
-.cli-block.a4-cli  { grid-column: 4;        grid-row: 4 / span 2; z-index: 2; position: relative; }
-.profile-block.a4  { grid-column: 5;        grid-row: 4 / span 2; z-index: 2; position: relative; }
-.command-prompt    { grid-column: 3;        grid-row: 5;          z-index: 2; position: relative; }
+.profile-block.a3  { grid-column: 1;          grid-row: 4 / span 2; z-index: 2; position: relative; }
+.cli-block.a3-cli  { grid-column: 2;          grid-row: 5;          z-index: 2; position: relative; }
+.cli-block.a4-cli  { grid-column: 4;          grid-row: 5;          z-index: 2; position: relative; }
+.profile-block.a4  { grid-column: 5;          grid-row: 4 / span 2; z-index: 2; position: relative; }
+.command-prompt    { grid-column: 3;          grid-row: 5;          z-index: 2; position: relative; }
 
 /* ═══════════════════════════════════════════════════════
    PANEL BASE
@@ -162,7 +162,7 @@ body {
 .profile-block:hover { background: var(--panel2); }
 
 .avatar {
-  font-size: clamp(22px, 2.4vw, 32px);
+  font-size: clamp(30px, 3.2vw, 48px);
   line-height: 1;
   filter: drop-shadow(0 0 8px currentColor);
 }
@@ -174,7 +174,7 @@ body {
 .agent-meta { display: flex; flex-direction: column; gap: 3px; align-items: center; }
 
 .agent-id {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--text-dim);
   letter-spacing: 0.18em;
 }
@@ -193,7 +193,7 @@ body {
 .a4 .num { color: var(--a4); }
 
 .agent-deity {
-  font-size: clamp(11px, 1.2vw, 15px);
+  font-size: clamp(16px, 1.8vw, 24px);
   font-weight: bold;
   letter-spacing: 0.2em;
 }
@@ -203,17 +203,17 @@ body {
 .a4 .agent-deity { color: var(--a4); text-shadow: var(--glow-purple); }
 
 .agent-model {
-  font-size: clamp(6px, 0.6vw, 8px);
+  font-size: clamp(10px, 0.9vw, 13px);
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 90px;
+  max-width: 120px;
   letter-spacing: 0.05em;
 }
 
 .agent-role {
-  font-size: clamp(7px, 0.65vw, 9px);
+  font-size: clamp(10px, 0.9vw, 13px);
   color: var(--text);
   letter-spacing: 0.08em;
   white-space: nowrap;
@@ -228,7 +228,7 @@ body {
 }
 
 .led {
-  width: 7px; height: 7px;
+  width: 10px; height: 10px;
   border-radius: 50%;
   background: var(--text-dim);
   flex-shrink: 0;
@@ -243,10 +243,10 @@ body {
 
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
 
-.led-label { font-size: 8px; color: var(--text-dim); letter-spacing: 0.12em; }
+.led-label { font-size: 11px; color: var(--text-dim); letter-spacing: 0.12em; }
 
 .config-hint {
-  font-size: 7px;
+  font-size: 10px;
   color: var(--gold-dim);
   letter-spacing: 0.12em;
   margin-top: auto;
@@ -263,8 +263,8 @@ body {
 }
 
 .cli-header {
-  padding: 6px 8px 4px;
-  font-size: 8px;
+  padding: 7px 10px 5px;
+  font-size: 11px;
   letter-spacing: 0.16em;
   border-bottom: 1px solid;
   background: rgba(0,0,0,.5);
@@ -281,8 +281,8 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 6px 8px;
-  font-size: clamp(8px, 0.68vw, 10px);
+  padding: 8px 10px;
+  font-size: clamp(11px, 0.9vw, 13px);
   line-height: 1.6;
   word-break: break-word;
   scrollbar-width: thin;
@@ -307,8 +307,8 @@ body {
 }
 
 .tc-header {
-  padding: 5px 8px 4px;
-  font-size: 8px;
+  padding: 7px 10px 5px;
+  font-size: 11px;
   color: var(--gold);
   border-bottom: 1px solid var(--gold);
   background: rgba(0,0,0,.55);
@@ -324,9 +324,9 @@ body {
   margin-left: auto;
   border: 1px solid var(--gold);
   background: rgba(232,184,0,.08);
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 2px;
-  font-size: 8px;
+  font-size: 11px;
   color: var(--gold);
   flex-shrink: 0;
   letter-spacing: 0.1em;
@@ -354,13 +354,13 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
+  padding: 7px 10px;
   background: rgba(0,217,245,.08);
   border-bottom: 1px solid var(--cyan);
   flex-shrink: 0;
 }
 .render-title {
-  font-size: 8px;
+  font-size: 11px;
   color: var(--cyan);
   letter-spacing: 0.15em;
   white-space: nowrap;
@@ -372,8 +372,8 @@ body {
   border: 1px solid rgba(0,217,245,.3);
   color: var(--text-hi);
   font-family: var(--mono);
-  font-size: 9px;
-  padding: 2px 7px;
+  font-size: 12px;
+  padding: 4px 9px;
   outline: none;
   min-width: 0;
   transition: border-color .15s;
@@ -384,8 +384,8 @@ body {
   border: 1px solid var(--cyan);
   color: var(--cyan);
   font-family: var(--mono);
-  font-size: 8px;
-  padding: 3px 9px;
+  font-size: 11px;
+  padding: 4px 12px;
   cursor: pointer;
   white-space: nowrap;
   letter-spacing: 0.08em;
@@ -410,12 +410,12 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 8px 10px;
-  gap: 5px;
+  padding: 10px 14px;
+  gap: 7px;
 }
 
 .prompt-label {
-  font-size: 8px;
+  font-size: 11px;
   color: var(--gold-dim);
   letter-spacing: 0.18em;
 }
@@ -430,8 +430,8 @@ body {
   border: 1px solid rgba(232,184,0,.3);
   color: var(--text-hi);
   font-family: var(--mono);
-  font-size: 11px;
-  padding: 5px 8px;
+  font-size: 14px;
+  padding: 6px 10px;
   outline: none;
   transition: border-color .15s;
   min-width: 0;
@@ -441,7 +441,7 @@ body {
   border-color: var(--gold);
   box-shadow: 0 0 8px rgba(232,184,0,.2);
 }
-#project-input { width: 130px; font-size: 9px; }
+#project-input { width: 150px; font-size: 12px; }
 #project-input:focus { border-color: var(--cyan); }
 
 #send-btn {
@@ -449,8 +449,8 @@ body {
   border: 1px solid var(--gold);
   color: var(--gold);
   font-family: var(--mono);
-  font-size: 10px;
-  padding: 5px 14px;
+  font-size: 13px;
+  padding: 6px 18px;
   cursor: pointer;
   letter-spacing: 0.1em;
   white-space: nowrap;
@@ -834,8 +834,8 @@ body {
   border: 1px solid #ff4400;
   color: #ff4400;
   font-family: var(--mono);
-  font-size: 10px;
-  padding: 5px 12px;
+  font-size: 13px;
+  padding: 6px 14px;
   cursor: pointer;
   letter-spacing: 0.1em;
   white-space: nowrap;
@@ -864,8 +864,8 @@ body {
   background: transparent;
   border: 1px solid currentColor;
   color: inherit;
-  font-size: 8px;
-  padding: 1px 5px;
+  font-size: 11px;
+  padding: 2px 7px;
   cursor: pointer;
   opacity: 0.4;
   transition: all .15s;
