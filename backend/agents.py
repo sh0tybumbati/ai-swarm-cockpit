@@ -5,7 +5,7 @@ import os
 # Override via env vars or POST /npu/config
 NPU_CONFIG: dict = {
     "host":  os.environ.get("FASTFLOW_HOST",  "http://localhost:8080"),
-    "model": os.environ.get("FASTFLOW_MODEL", "fastflow-lm"),
+    "model": os.environ.get("FASTFLOW_MODEL", "llama3.2"),
 }
 
 # ── Claude API config ───────────────────────────────────
