@@ -166,6 +166,10 @@ async def download_file(project: str, filename: str):
                    ".js": "application/javascript", ".ts": "application/javascript",
                    ".json": "application/json"}
     media = media_types.get(filepath.suffix, "text/plain")
+    # inline display types render in the iframe; others trigger download
+    inline = {".html", ".css", ".js", ".ts", ".json", ".txt", ".md"}
+    if filepath.suffix in inline:
+        return FileResponse(filepath, media_type=media)
     return FileResponse(filepath, media_type=media, filename=safe_file)
 
 
