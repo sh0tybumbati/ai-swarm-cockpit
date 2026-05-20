@@ -400,13 +400,16 @@ function updateBackendBadge(agentId, backend) {
   const cliEl   = document.querySelector(`.cli-block.${CLI_SUFFIX[agentId]}`);
   if (!badge) return;
   badge.textContent = BACKEND_LABELS[backend] || backend.toUpperCase();
+  const isGpu    = backend === 'gpu';
   const isNpu    = backend === 'npu';
   const isClaude = backend === 'claude';
   const isCli    = backend === 'cli';
   badge.className   = `backend-badge${isNpu ? ' npu' : isClaude ? ' claude' : isCli ? ' cli' : ''}`;
+  prof?.classList.toggle('gpu-active',    isGpu);
   prof?.classList.toggle('npu-active',    isNpu);
   prof?.classList.toggle('claude-active', isClaude);
   prof?.classList.toggle('cli-active',    isCli);
+  cliEl?.classList.toggle('gpu-active',   isGpu);
   cliEl?.classList.toggle('npu-active',   isNpu);
   cliEl?.classList.toggle('claude-active',isClaude);
   cliEl?.classList.toggle('cli-active',   isCli);

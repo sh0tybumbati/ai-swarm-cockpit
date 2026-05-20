@@ -641,41 +641,94 @@ body {
 /* ═══════════════════════════════════════════════════════
    NPU BACKEND BADGE & GLOW
 ═══════════════════════════════════════════════════════ */
-:root { --npu: #ff9900; --claude: #d97757; --cli: #34d399; }
+:root {
+  --gpu:    #e8b800;   /* gold    */
+  --npu:    #00d9f5;   /* cyan    */
+  --claude: #ff3355;   /* red     */
+  --cli:    #ff9900;   /* orange  */
+}
 
 .backend-badge {
   font-size: 8px;
   letter-spacing: 0.18em;
   padding: 2px 7px;
   border-radius: 2px;
-  border: 1px solid var(--text-dim);
-  color: var(--text-dim);
+  border: 1px solid var(--gpu);
+  color: var(--gpu);
+  background: rgba(232,184,0,.08);
+  box-shadow: 0 0 8px rgba(232,184,0,.3);
+  animation: gpu-glow 2s ease-in-out infinite;
   transition: all 0.3s;
   cursor: default;
 }
+@keyframes gpu-glow {
+  0%,100% { box-shadow: 0 0 6px rgba(232,184,0,.25); }
+  50%      { box-shadow: 0 0 14px rgba(232,184,0,.55); }
+}
+.profile-block.gpu-active,
+.cli-block.gpu-active {
+  border-color: var(--gpu) !important;
+  box-shadow: inset 0 0 12px rgba(232,184,0,.08), 0 0 8px rgba(232,184,0,.25) !important;
+}
+
+/* NPU — cyan */
 .backend-badge.npu {
   border-color: var(--npu);
   color: var(--npu);
-  background: rgba(255,153,0,.1);
-  box-shadow: 0 0 8px rgba(255,153,0,.35);
+  background: rgba(0,217,245,.08);
+  box-shadow: 0 0 8px rgba(0,217,245,.35);
   animation: npu-glow 2s ease-in-out infinite;
 }
 @keyframes npu-glow {
-  0%,100% { box-shadow: 0 0 6px rgba(255,153,0,.3); }
-  50%      { box-shadow: 0 0 14px rgba(255,153,0,.6); }
+  0%,100% { box-shadow: 0 0 6px rgba(0,217,245,.3); }
+  50%      { box-shadow: 0 0 14px rgba(0,217,245,.65); }
+}
+.profile-block.npu-active,
+.cli-block.npu-active {
+  border-color: var(--npu) !important;
+  box-shadow: inset 0 0 12px rgba(0,217,245,.08), 0 0 8px rgba(0,217,245,.3) !important;
 }
 
-/* Agent 4 panel goes amber when NPU is active */
-.profile-block.a4.npu-active,
-.cli-block.a4-cli.npu-active {
-  border-color: var(--npu) !important;
-  box-shadow: inset 0 0 12px rgba(255,153,0,.1), 0 0 8px rgba(255,153,0,.3) !important;
+/* Claude API — red */
+.backend-badge.claude {
+  border-color: var(--claude);
+  color: var(--claude);
+  background: rgba(255,51,85,.08);
+  box-shadow: 0 0 8px rgba(255,51,85,.35);
+  animation: claude-glow 2s ease-in-out infinite;
+}
+@keyframes claude-glow {
+  0%,100% { box-shadow: 0 0 6px rgba(255,51,85,.3); }
+  50%      { box-shadow: 0 0 14px rgba(255,51,85,.65); }
+}
+.profile-block.claude-active,
+.cli-block.claude-active {
+  border-color: var(--claude) !important;
+  box-shadow: inset 0 0 12px rgba(255,51,85,.08), 0 0 8px rgba(255,51,85,.3) !important;
+}
+
+/* Claude CLI — orange */
+.backend-badge.cli {
+  border-color: var(--cli);
+  color: var(--cli);
+  background: rgba(255,153,0,.08);
+  box-shadow: 0 0 8px rgba(255,153,0,.35);
+  animation: cli-glow 2s ease-in-out infinite;
+}
+@keyframes cli-glow {
+  0%,100% { box-shadow: 0 0 6px rgba(255,153,0,.3); }
+  50%      { box-shadow: 0 0 14px rgba(255,153,0,.65); }
+}
+.profile-block.cli-active,
+.cli-block.cli-active {
+  border-color: var(--cli) !important;
+  box-shadow: inset 0 0 12px rgba(255,153,0,.08), 0 0 8px rgba(255,153,0,.3) !important;
 }
 
 /* NPU modal section */
 .npu-section {
-  background: rgba(255,153,0,.05);
-  border: 1px solid rgba(255,153,0,.2);
+  background: rgba(0,217,245,.04);
+  border: 1px solid rgba(0,217,245,.2);
   padding: 10px;
   border-radius: 2px;
 }
@@ -698,20 +751,30 @@ body {
   letter-spacing: 0.1em;
   transition: all .15s;
 }
-.backend-opt.active {
-  background: rgba(0,217,245,.12);
-  border-color: var(--cyan);
-  color: var(--cyan);
+/* GPU button active — gold */
+.backend-opt.active,
+.backend-opt[id="btn-gpu"].active {
+  background: rgba(232,184,0,.12);
+  border-color: var(--gpu);
+  color: var(--gpu);
 }
+/* NPU button active — cyan */
 .backend-opt[id="btn-npu"].active {
-  background: rgba(255,153,0,.12);
+  background: rgba(0,217,245,.12);
   border-color: var(--npu);
   color: var(--npu);
 }
+/* Claude API button active — red */
 .backend-opt[id="btn-claude"].active {
-  background: rgba(217,119,87,.12);
+  background: rgba(255,51,85,.12);
   border-color: var(--claude);
   color: var(--claude);
+}
+/* Claude CLI button active — orange */
+.backend-opt[id="btn-cli"].active {
+  background: rgba(255,153,0,.12);
+  border-color: var(--cli);
+  color: var(--cli);
 }
 .backend-opt:hover { opacity: 0.85; }
 
@@ -725,7 +788,7 @@ body {
 
 #npu-host-input, #npu-model-input {
   background: rgba(0,0,0,.5);
-  border: 1px solid rgba(255,153,0,.3);
+  border: 1px solid rgba(0,217,245,.3);
   color: var(--text-hi);
   font-family: var(--mono);
   font-size: 10px;
@@ -736,31 +799,9 @@ body {
 }
 #npu-host-input:focus, #npu-model-input:focus { border-color: var(--npu); }
 
-/* Claude CLI badge + panel accent */
-.backend-badge.cli {
-  border-color: var(--cli);
-  color: var(--cli);
-  background: rgba(52,211,153,.1);
-  box-shadow: 0 0 8px rgba(52,211,153,.35);
-  animation: cli-glow 2s ease-in-out infinite;
-}
-@keyframes cli-glow {
-  0%,100% { box-shadow: 0 0 6px rgba(52,211,153,.3); }
-  50%      { box-shadow: 0 0 14px rgba(52,211,153,.65); }
-}
-.profile-block.cli-active,
-.cli-block.cli-active {
-  border-color: var(--cli) !important;
-  box-shadow: inset 0 0 12px rgba(52,211,153,.1), 0 0 8px rgba(52,211,153,.3) !important;
-}
-.backend-opt[id="btn-cli"].active {
-  background: rgba(52,211,153,.12);
-  border-color: var(--cli);
-  color: var(--cli);
-}
 #cli-model-input, #cli-bin-input {
   background: rgba(0,0,0,.5);
-  border: 1px solid rgba(52,211,153,.3);
+  border: 1px solid rgba(255,153,0,.3);
   color: var(--text-hi);
   font-family: var(--mono);
   font-size: 10px;
@@ -771,28 +812,10 @@ body {
 }
 #cli-model-input:focus, #cli-bin-input:focus { border-color: var(--cli); }
 
-/* Claude API badge + panel accent */
-.backend-badge.claude {
-  border-color: var(--claude);
-  color: var(--claude);
-  background: rgba(217,119,87,.1);
-  box-shadow: 0 0 8px rgba(217,119,87,.35);
-  animation: claude-glow 2s ease-in-out infinite;
-}
-@keyframes claude-glow {
-  0%,100% { box-shadow: 0 0 6px rgba(217,119,87,.3); }
-  50%      { box-shadow: 0 0 14px rgba(217,119,87,.65); }
-}
-.profile-block.claude-active,
-.cli-block.claude-active {
-  border-color: var(--claude) !important;
-  box-shadow: inset 0 0 12px rgba(217,119,87,.1), 0 0 8px rgba(217,119,87,.3) !important;
-}
-
-/* Claude modal config fields */
+/* Claude API modal config fields */
 #claude-key-input, #claude-model-input {
   background: rgba(0,0,0,.5);
-  border: 1px solid rgba(217,119,87,.3);
+  border: 1px solid rgba(255,51,85,.3);
   color: var(--text-hi);
   font-family: var(--mono);
   font-size: 10px;
