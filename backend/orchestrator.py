@@ -643,16 +643,23 @@ class SwarmOrchestrator(ConnectionManager):
             # Context prefix injected into Agent 1
             ctx_prefix = f"Project context from prior sessions:\n{prior_context}\n\n" if prior_context else ""
 
+            # Deployment context always injected so AN knows where output lands
+            deploy_note = (
+                "DEPLOYMENT TARGET: Output is previewed in a browser iframe. "
+                "Produce a single self-contained index.html (CSS in <style>, JS in <script>). "
+                "Do not use TypeScript, npm, or build tools unless explicitly requested.\n\n"
+            )
+
             # ── AN: App Architect ─────────────────────────────────────────────
             a1_msgs = list(base_ctx)
             if last.get("agent1") and feedback.get("agent1"):
                 a1_msgs = [
-                    {"role": "user", "content": ctx_prefix + feature_request},
+                    {"role": "user", "content": deploy_note + ctx_prefix + feature_request},
                     {"role": "assistant", "content": last["agent1"][-MAX_CTX_CHARS:]},
                     {"role": "user", "content": f"ENZU feedback: {feedback['agent1']}. Fix these issues."},
                 ]
-            elif ctx_prefix:
-                a1_msgs = [{"role": "user", "content": ctx_prefix + feature_request}]
+            else:
+                a1_msgs = [{"role": "user", "content": deploy_note + ctx_prefix + feature_request}]
 
             resp1 = await self._run_agent("agent1", a1_msgs)
             last["agent1"] = all_out["agent1"] = resp1
