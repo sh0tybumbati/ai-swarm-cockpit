@@ -676,6 +676,13 @@ function closeFilesModal() {
   document.getElementById('files-modal-overlay').classList.remove('open');
 }
 
+function previewFile(url) {
+  document.getElementById('preview-url-input').value = url;
+  document.getElementById('preview-frame').src = url;
+  closeFilesModal();
+  sysLog(`[PREVIEW] Loaded: ${url.split('/').pop()}`, 'info');
+}
+
 async function refreshFilesList(project) {
   const empty = document.getElementById('files-empty');
   const table = document.getElementById('files-table');
@@ -692,14 +699,19 @@ async function refreshFilesList(project) {
     if (!files.length) { empty.textContent = 'No files generated yet.'; return; }
     empty.style.display = 'none';
     table.style.display = 'table';
+    const previewExts = new Set(['.html', '.htm', '.css', '.js', '.ts', '.json', '.txt', '.md']);
     files.forEach(f => {
-      const tr = document.createElement('tr');
-      const kb = (f.size / 1024).toFixed(1);
+      const tr  = document.createElement('tr');
+      const kb  = (f.size / 1024).toFixed(1);
+      const url = `${API_BASE}/files/${encodeURIComponent(project)}/${encodeURIComponent(f.name)}`;
+      const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+      const previewBtn = previewExts.has(ext)
+        ? `<button onclick="previewFile('${url}')" style="margin-right:6px">◈ PREVIEW</button>`
+        : '';
       tr.innerHTML = `
         <td>${f.name}</td>
         <td>${kb} KB</td>
-        <td><a href="${API_BASE}/files/${encodeURIComponent(project)}/${encodeURIComponent(f.name)}"
-           target="_blank" download="${f.name}">↓ DOWNLOAD</a></td>`;
+        <td>${previewBtn}<a href="${url}" target="_blank" download="${f.name}">↓ DL</a></td>`;
       tbody.appendChild(tr);
     });
   } catch (err) {
