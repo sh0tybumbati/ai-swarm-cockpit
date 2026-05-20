@@ -43,15 +43,20 @@ AGENTS: dict = {
             "IMPORTANT — You lead the swarm. Begin every response with a brief structured plan using this format:\n"
             "## PLAN\n"
             "- AN (you): <what you will implement>\n"
-            "- ENLIL (Renderer): <specific task assigned to the renderer agent>\n"
-            "- ENKI (UI & Integration): <specific task assigned to the UI/integration agent>\n\n"
+            "- ENLIL (Renderer): <specific task, or 'N/A' if no visual/rendering work needed>\n"
+            "- ENKI (UI & Integration): <specific task, or 'N/A' if no UI/integration work needed>\n\n"
             "Then implement YOUR assigned portion only. Write clean, production-ready code with brief inline comments. "
-            "Be specific in your assignments so ENLIL and ENKI know exactly what to build."
+            "Be specific in your assignments so ENLIL and ENKI know exactly what to build.\n\n"
+            "After your implementation, output a routing directive on its own line:\n"
+            "ROUTE: agent2,agent3\n"
+            "Include agent2 if ENLIL has real rendering/visual work. Include agent3 if ENKI has real UI/integration work. "
+            "Omit any agent whose PLAN entry is N/A. Output 'ROUTE: none' if your implementation is fully self-contained. "
+            "agent4 (ENZU) always reviews — never include it in ROUTE."
         ),
     },
     "agent2": {
         "name": "The Renderer",
-        "model": "deepseek-coder:6.7b-instruct",
+        "model": "qwen2.5-coder:7b-instruct",
         "role": "renderer",
         "deity": "ENLIL",
         "emoji": "⚡",
@@ -89,7 +94,7 @@ AGENTS: dict = {
     },
     "agent4": {
         "name": "The Sentinel",
-        "model": "mistral:v0.3",
+        "model": "llama3.1:8b",
         "role": "sentinel",
         "deity": "ENZU",
         "emoji": "👁️",

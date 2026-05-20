@@ -1,7 +1,8 @@
 """
 Swarm Orchestrator — WebSocket manager + agent loop.
 
-Loop:  AN (Engine) → ENLIL (Renderer) → ENKI (DOM) → ENZU (Sentinel)
+Loop:  AN (Architect) → [ENLIL, ENKI as routed by AN] → ENZU (Sentinel)
+       AN emits ROUTE: directive to select downstream agents.
        Sentinel marks COMPLETE or routes back to responsible agent.
        Circuit breaker at MAX_ITERATIONS.
        Code blocks extracted and saved to output/<project>/.
@@ -43,9 +44,9 @@ LANG_EXT: Dict[str, str] = {
 }
 
 AGENT_FILE_PREFIX = {
-    "agent1": "engine",
+    "agent1": "architect",
     "agent2": "renderer",
-    "agent3": "dom_bridge",
+    "agent3": "integration",
     "agent4": "sentinel",
 }
 
@@ -545,6 +546,25 @@ class SwarmOrchestrator(ConnectionManager):
         await self.send_token(agent_id, "\n")
         return output
 
+    # ── Route parser ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_route(text: str) -> List[str]:
+        """Parse AN's ROUTE: directive to determine which agents run next."""
+        for line in reversed(text.splitlines()):  # scan from bottom — ROUTE: is last
+            stripped = line.strip()
+            if stripped.upper().startswith("ROUTE:"):
+                raw = stripped.split(":", 1)[1].strip().lower()
+                if not raw or raw == "none":
+                    return []
+                route = []
+                if any(tok in raw for tok in ("agent2", "2", "enlil", "render")):
+                    route.append("agent2")
+                if any(tok in raw for tok in ("agent3", "3", "enki", "ui", "integrat")):
+                    route.append("agent3")
+                return route
+        return ["agent2", "agent3"]  # default: run all if no ROUTE: tag
+
     # ── Sentinel verdict parser ────────────────────────────────────────────────
 
     @staticmethod
@@ -565,9 +585,9 @@ class SwarmOrchestrator(ConnectionManager):
                 lu = line.upper()
                 if "ROUTE_TO:" in lu:
                     raw = line.split(":", 1)[1].strip().lower()
-                    if "2" in raw or "render" in raw or "enlil" in raw:
+                    if any(tok in raw for tok in ("2", "render", "enlil", "visual", "css")):
                         route_to = "agent2"
-                    elif "3" in raw or "dom" in raw or "input" in raw or "enki" in raw:
+                    elif any(tok in raw for tok in ("3", "dom", "input", "enki", "ui", "integrat")):
                         route_to = "agent3"
                     else:
                         route_to = "agent1"
@@ -583,9 +603,9 @@ class SwarmOrchestrator(ConnectionManager):
 
         if len(words & bug_signals) >= 2 and len(words & route_signals) >= 1:
             route_to = "agent1"
-            if any(w in upper for w in ("RENDER", "SHADER", "CANVAS", "WEBGL", "ENLIL")):
+            if any(w in upper for w in ("RENDER", "SHADER", "CANVAS", "WEBGL", "ENLIL", "CSS", "VISUAL")):
                 route_to = "agent2"
-            elif any(w in upper for w in ("DOM", "INPUT", "EVENT", "ENKI")):
+            elif any(w in upper for w in ("DOM", "INPUT", "EVENT", "ENKI", "UI", "INTEGRATION", "FETCH", "ROUTING")):
                 route_to = "agent3"
             return {"decision": "route_back", "route_to": route_to,
                     "reason": "Issues detected (inferred from unstructured verdict)"}
@@ -640,40 +660,60 @@ class SwarmOrchestrator(ConnectionManager):
             all_saved.extend(f["file"] for f in saved)
             if saved: await self.notify_files(saved)
 
+            # Parse AN's routing decision
+            route = self._parse_route(resp1)
+            await self.sys_log(
+                f"[AN] ROUTE → {', '.join(route).upper() or 'ENZU only (self-contained)'}", "info"
+            )
+
             # ── ENLIL: Renderer ────────────────────────────────────────────────
-            a2_note = f"\nENZU feedback: {feedback['agent2']}" if feedback.get("agent2") else ""
-            resp2 = await self._run_agent("agent2", [
-                {"role": "user",      "content": feature_request},
-                {"role": "assistant", "content": f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS]}"},
-                {"role": "user",      "content": f"AN has assigned you a task in the PLAN section above. Implement it now.{a2_note}"},
-            ])
-            last["agent2"] = all_out["agent2"] = resp2
-            saved = save_agent_output(project, "agent2", iteration, resp2)
-            all_saved.extend(f["file"] for f in saved)
-            if saved: await self.notify_files(saved)
+            resp2 = ""
+            if "agent2" in route:
+                a2_note = f"\nENZU feedback: {feedback['agent2']}" if feedback.get("agent2") else ""
+                resp2 = await self._run_agent("agent2", [
+                    {"role": "user",      "content": feature_request},
+                    {"role": "assistant", "content": f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS]}"},
+                    {"role": "user",      "content": f"AN has assigned you a task in the PLAN section above. Implement it now.{a2_note}"},
+                ])
+                last["agent2"] = all_out["agent2"] = resp2
+                saved = save_agent_output(project, "agent2", iteration, resp2)
+                all_saved.extend(f["file"] for f in saved)
+                if saved: await self.notify_files(saved)
+            else:
+                await self.sys_log(f"[ENLIL] Skipped — no rendering work this iteration", "info")
+                await self.send_status("agent2", "IDLE")
 
             # ── ENKI: UI & Integration ────────────────────────────────────────
-            a3_note = f"\nENZU feedback: {feedback['agent3']}" if feedback.get("agent3") else ""
-            resp3 = await self._run_agent("agent3", [
-                {"role": "user",      "content": feature_request},
-                {"role": "assistant", "content": (
-                    f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS // 2]}\n\n"
-                    f"ENLIL's rendering implementation:\n{resp2[:MAX_CTX_CHARS // 2]}"
-                )},
-                {"role": "user", "content": f"AN has assigned you a task in the PLAN section above. Implement it now, integrating with ENLIL's work.{a3_note}"},
-            ])
-            last["agent3"] = all_out["agent3"] = resp3
-            saved = save_agent_output(project, "agent3", iteration, resp3)
-            all_saved.extend(f["file"] for f in saved)
-            if saved: await self.notify_files(saved)
+            resp3 = ""
+            if "agent3" in route:
+                a3_note = f"\nENZU feedback: {feedback['agent3']}" if feedback.get("agent3") else ""
+                resp3 = await self._run_agent("agent3", [
+                    {"role": "user",      "content": feature_request},
+                    {"role": "assistant", "content": (
+                        f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS // 2]}\n\n"
+                        f"ENLIL's rendering implementation:\n{resp2[:MAX_CTX_CHARS // 2]}" if resp2
+                        else f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS]}"
+                    )},
+                    {"role": "user", "content": (
+                        f"AN has assigned you a task in the PLAN section above. Implement it now"
+                        f"{', integrating with ENLIL\\'s work' if resp2 else ''}.{a3_note}"
+                    )},
+                ])
+                last["agent3"] = all_out["agent3"] = resp3
+                saved = save_agent_output(project, "agent3", iteration, resp3)
+                all_saved.extend(f["file"] for f in saved)
+                if saved: await self.notify_files(saved)
+            else:
+                await self.sys_log(f"[ENKI] Skipped — no integration work this iteration", "info")
+                await self.send_status("agent3", "IDLE")
 
             # ── ENZU: Sentinel ─────────────────────────────────────────────────
-            combined = (
-                f"Feature: {feature_request}\n\n"
-                f"=== AN ({AGENTS['agent1']['name']}) ===\n{resp1[:MAX_CTX_CHARS]}\n\n"
-                f"=== ENLIL ({AGENTS['agent2']['name']}) ===\n{resp2[:MAX_CTX_CHARS]}\n\n"
-                f"=== ENKI ({AGENTS['agent3']['name']}) ===\n{resp3[:MAX_CTX_CHARS]}"
-            )
+            sections = [f"Feature: {feature_request}\n\n=== AN ({AGENTS['agent1']['name']}) ===\n{resp1[:MAX_CTX_CHARS]}"]
+            if resp2:
+                sections.append(f"=== ENLIL ({AGENTS['agent2']['name']}) ===\n{resp2[:MAX_CTX_CHARS]}")
+            if resp3:
+                sections.append(f"=== ENKI ({AGENTS['agent3']['name']}) ===\n{resp3[:MAX_CTX_CHARS]}")
+            combined = "\n\n".join(sections)
             sentinel_resp = await self._run_agent("agent4", [
                 {"role": "user", "content": f"Review this implementation:\n{combined}"}
             ])
