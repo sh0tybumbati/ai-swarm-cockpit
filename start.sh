@@ -18,6 +18,11 @@ GPU_MODELS=("qwen2.5-coder:7b" "deepseek-coder:6.7b" "mistral:7b")
 FASTFLOW_HOST="${FASTFLOW_HOST:-http://localhost:8080}"
 FASTFLOW_MODEL="${FASTFLOW_MODEL:-fastflow-lm}"
 
+# ── Claude API config ───────────────────────────────────────────────
+# Set ANTHROPIC_API_KEY in your environment to enable Claude backend.
+# export ANTHROPIC_API_KEY="sk-ant-..."
+CLAUDE_MODEL="${CLAUDE_MODEL:-claude-opus-4-7}"
+
 # ── Colors ─────────────────────────────────────────────────────────
 CY='\033[0;36m'; GN='\033[0;32m'; YL='\033[0;33m'
 RD='\033[0;31m'; DM='\033[0;90m'; NC='\033[0m'

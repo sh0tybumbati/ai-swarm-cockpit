@@ -12,7 +12,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from agents import AGENTS, NPU_CONFIG
+from agents import AGENTS, NPU_CONFIG, CLAUDE_CONFIG
 from orchestrator import (OUTPUT_BASE, SwarmOrchestrator,
                           list_output_files, load_context, save_context,
                           _safe_name)
@@ -227,9 +227,59 @@ async def services_status():
                                    "error": str(e)}
 
         results["agent4_backend"] = AGENTS["agent4"].get("backend", "gpu")
+        results["agent_backends"] = {aid: AGENTS[aid].get("backend", "gpu") for aid in AGENTS}
+        results["claude"] = {
+            "has_key": bool(CLAUDE_CONFIG["api_key"]),
+            "model": CLAUDE_CONFIG["model"],
+        }
         return results
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "1.2.0", "agents": list(AGENTS.keys())}
+
+
+# ── Claude API config & health ─────────────────────────────────────────────────
+
+@app.get("/claude/config")
+async def get_claude_config():
+    return {"model": CLAUDE_CONFIG["model"], "has_key": bool(CLAUDE_CONFIG["api_key"])}
+
+
+@app.post("/claude/config")
+async def set_claude_config(payload: dict):
+    if "api_key" in payload and payload["api_key"].strip():
+        CLAUDE_CONFIG["api_key"] = payload["api_key"].strip()
+    if "model" in payload and payload["model"].strip():
+        CLAUDE_CONFIG["model"] = payload["model"].strip()
+    return {"status": "updated", "model": CLAUDE_CONFIG["model"],
+            "has_key": bool(CLAUDE_CONFIG["api_key"])}
+
+
+@app.post("/claude/backend")
+async def set_agent_backend_claude(payload: dict):
+    agent_id = payload.get("agent_id", "agent1")
+    backend  = payload.get("backend", "gpu")
+    if agent_id not in AGENTS:
+        raise HTTPException(404, "Agent not found")
+    if backend not in ("gpu", "npu", "claude"):
+        return JSONResponse({"error": "backend must be 'gpu', 'npu', or 'claude'"}, status_code=400)
+    AGENTS[agent_id]["backend"] = backend
+    return {"status": "updated", "agent_id": agent_id, "backend": backend}
+
+
+@app.get("/claude/health")
+async def claude_health():
+    has_key = bool(CLAUDE_CONFIG["api_key"])
+    if not has_key:
+        return {"online": False, "reason": "No API key configured"}
+    try:
+        import anthropic
+        client  = anthropic.AsyncAnthropic(api_key=CLAUDE_CONFIG["api_key"])
+        # lightweight list-models call to verify key validity
+        models  = await client.models.list()
+        ids     = [m.id for m in models.data]
+        return {"online": True, "model": CLAUDE_CONFIG["model"], "available_models": ids[:6]}
+    except Exception as exc:
+        return {"online": False, "error": str(exc)}

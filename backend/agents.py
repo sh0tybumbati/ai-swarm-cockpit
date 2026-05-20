@@ -8,6 +8,13 @@ NPU_CONFIG: dict = {
     "model": os.environ.get("FASTFLOW_MODEL", "fastflow-lm"),
 }
 
+# ── Claude API config ───────────────────────────────────
+# Set ANTHROPIC_API_KEY env var before starting the server
+CLAUDE_CONFIG: dict = {
+    "api_key": os.environ.get("ANTHROPIC_API_KEY", ""),
+    "model":   os.environ.get("CLAUDE_MODEL", "claude-opus-4-7"),
+}
+
 AGENTS: dict = {
     "agent1": {
         "name": "Engine Architect",
@@ -16,6 +23,7 @@ AGENTS: dict = {
         "deity": "AN",
         "emoji": "🦅",
         "color": "#e8b800",
+        "backend": "gpu",   # "gpu" | "npu" | "claude"
         "system": (
             "You are the Engine Architect for a web game development swarm. "
             "Design and implement the core game engine: ECS (Entity-Component-System) architecture, "
@@ -33,6 +41,7 @@ AGENTS: dict = {
         "deity": "ENLIL",
         "emoji": "⚡",
         "color": "#00aaff",
+        "backend": "gpu",   # "gpu" | "npu" | "claude"
         "system": (
             "You are The Renderer for a web game development swarm. "
             "Your domain is WebGL shaders, Canvas 2D pipelines, sprite batching, "
@@ -49,6 +58,7 @@ AGENTS: dict = {
         "deity": "ENKI",
         "emoji": "🐍",
         "color": "#3dffd0",
+        "backend": "gpu",   # "gpu" | "npu" | "claude"
         "system": (
             "You are the DOM & Input Bridge for a web game development swarm. "
             "Handle all browser interface concerns: keyboard/mouse/gamepad/touch input, "

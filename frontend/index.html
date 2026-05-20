@@ -17,6 +17,7 @@
         <div class="agent-deity">AN</div>
         <div class="agent-role">Engine Architect</div>
         <div class="agent-model" id="model-label-agent1">Qwen-2.5-Coder-14B <span class="model-dot" id="mdot-agent1" title="Model status">●</span></div>
+        <div class="backend-badge" id="backend-badge-agent1" title="Inference backend">GPU</div>
         <div class="agent-status-row">
           <span class="led" id="led-agent1"></span>
           <span class="led-label" id="status-agent1">IDLE</span>
@@ -55,6 +56,7 @@
         <div class="agent-deity">ENLIL</div>
         <div class="agent-role">The Renderer</div>
         <div class="agent-model" id="model-label-agent2">DeepSeek-Coder-8B <span class="model-dot" id="mdot-agent2" title="Model status">●</span></div>
+        <div class="backend-badge" id="backend-badge-agent2" title="Inference backend">GPU</div>
         <div class="agent-status-row">
           <span class="led" id="led-agent2"></span>
           <span class="led-label" id="status-agent2">IDLE</span>
@@ -86,6 +88,7 @@
         <div class="agent-deity">ENKI</div>
         <div class="agent-role">DOM & Input Bridge</div>
         <div class="agent-model" id="model-label-agent3">Qwen-2.5-Coder-7B <span class="model-dot" id="mdot-agent3" title="Model status">●</span></div>
+        <div class="backend-badge" id="backend-badge-agent3" title="Inference backend">GPU</div>
         <div class="agent-status-row">
           <span class="led" id="led-agent3"></span>
           <span class="led-label" id="status-agent3">IDLE</span>
@@ -146,14 +149,16 @@
         <button class="close-btn" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body">
-        <!-- NPU section — only shown for ENZU (agent4) -->
-        <div class="field npu-section" id="npu-section" style="display:none">
+        <!-- Backend section — shown for all agents -->
+        <div class="field" id="backend-section">
           <label>⚡ INFERENCE BACKEND</label>
           <div class="backend-toggle">
-            <button id="btn-gpu" class="backend-opt active" onclick="setBackend('gpu')">GPU — Ollama</button>
-            <button id="btn-npu" class="backend-opt" onclick="setBackend('npu')">NPU — FastFlowLM</button>
+            <button id="btn-gpu"    class="backend-opt active" onclick="setBackend('gpu')">GPU — Ollama</button>
+            <button id="btn-npu"    class="backend-opt"        onclick="setBackend('npu')">NPU — FastFlowLM</button>
+            <button id="btn-claude" class="backend-opt"        onclick="setBackend('claude')">☁ Claude API</button>
           </div>
-          <div id="npu-config-fields" style="display:none; margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+          <!-- NPU config fields -->
+          <div id="npu-config-fields" style="display:none; margin-top:8px; flex-direction:column; gap:6px;">
             <div class="field">
               <label>NPU HOST</label>
               <input type="text" id="npu-host-input" placeholder="http://localhost:8080" />
@@ -163,6 +168,18 @@
               <input type="text" id="npu-model-input" placeholder="fastflow-lm" />
             </div>
             <div id="npu-status-line" class="npu-status"></div>
+          </div>
+          <!-- Claude config fields -->
+          <div id="claude-config-fields" style="display:none; margin-top:8px; flex-direction:column; gap:6px;">
+            <div class="field">
+              <label>☁ ANTHROPIC API KEY</label>
+              <input type="password" id="claude-key-input" placeholder="sk-ant-..." />
+            </div>
+            <div class="field">
+              <label>☁ CLAUDE MODEL</label>
+              <input type="text" id="claude-model-input" placeholder="claude-opus-4-7" />
+            </div>
+            <div id="claude-status-line" class="npu-status"></div>
           </div>
         </div>
         <div class="field">

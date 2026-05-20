@@ -12,7 +12,7 @@ let currentProject    = 'ENMERKAR';
 let savedFilesCount   = 0;
 let loopRunning       = false;
 let autoRefresh       = false;
-let agent4Backend     = 'gpu';   // 'gpu' | 'npu'
+const agentBackends   = {};      // per-agent backend state
 let modalBackend      = 'gpu';   // tracks selection inside modal
 
 // ── Command history ────────────────────────────────────
@@ -70,7 +70,7 @@ function handleMsg(channel, msg) {
       appendConsoleLine(msg.message, msg.level || 'log');
       break;
     case 'backend':
-      if (channel === 'agent4') updateBackendBadge(msg.backend);
+      updateBackendBadge(channel, msg.backend);
       break;
     case 'file_saved':
       onFileSaved(msg);
@@ -345,9 +345,22 @@ async function checkModelStatus() {
     const agentData = await agentRes.json();
 
     agents.forEach((id, i) => {
-      const dot   = dotEls[i];
+      const dot     = dotEls[i];
       if (!dot) return;
-      const model = agentData[id]?.model ?? '';
+      const model   = agentData[id]?.model ?? '';
+      const backend = agentData[id]?.backend || 'gpu';
+
+      if (backend === 'claude') {
+        dot.className = 'model-dot ok';
+        dot.title     = `Claude API — ${agentData[id]?.model || 'claude-opus-4-7'}`;
+        return;
+      }
+      if (backend === 'npu') {
+        dot.className = 'model-dot ok';
+        dot.title     = 'NPU — FastFlowLM';
+        return;
+      }
+
       // Ollama model names can omit the :latest tag
       const found = models.has(model) ||
                     models.has(model + ':latest') ||
@@ -369,27 +382,37 @@ async function checkModelStatus() {
   }
 }
 
-// ── NPU backend controls ───────────────────────────────
+// ── Backend badge controls (any agent) ────────────────
 
-function updateBackendBadge(backend) {
-  agent4Backend = backend;
-  const badge = document.getElementById('backend-badge-agent4');
-  const prof  = document.getElementById('profile-agent4');
-  const cli   = document.querySelector('.cli-block.a4-cli');
+const CLI_SUFFIX = { agent1: 'a1-cli', agent2: 'a2-cli', agent3: 'a3-cli', agent4: 'a4-cli' };
+
+function updateBackendBadge(agentId, backend) {
+  agentBackends[agentId] = backend;
+  const badge = document.getElementById(`backend-badge-${agentId}`);
+  const prof  = document.getElementById(`profile-${agentId}`);
+  const cli   = document.querySelector(`.cli-block.${CLI_SUFFIX[agentId]}`);
   if (!badge) return;
   badge.textContent = backend.toUpperCase();
-  badge.className   = `backend-badge${backend === 'npu' ? ' npu' : ''}`;
-  prof?.classList.toggle('npu-active', backend === 'npu');
-  cli?.classList.toggle('npu-active',  backend === 'npu');
+  const isNpu    = backend === 'npu';
+  const isClaude = backend === 'claude';
+  badge.className   = `backend-badge${isNpu ? ' npu' : isClaude ? ' claude' : ''}`;
+  prof?.classList.toggle('npu-active',    isNpu);
+  prof?.classList.toggle('claude-active', isClaude);
+  cli?.classList.toggle('npu-active',     isNpu);
+  cli?.classList.toggle('claude-active',  isClaude);
 }
 
 function setBackend(backend) {
   modalBackend = backend;
-  document.getElementById('btn-gpu').classList.toggle('active', backend === 'gpu');
-  document.getElementById('btn-npu').classList.toggle('active', backend === 'npu');
-  const npuFields = document.getElementById('npu-config-fields');
-  npuFields.style.display = backend === 'npu' ? 'flex' : 'none';
-  if (backend === 'npu') checkNpuHealth();
+  document.getElementById('btn-gpu').classList.toggle('active',    backend === 'gpu');
+  document.getElementById('btn-npu').classList.toggle('active',    backend === 'npu');
+  document.getElementById('btn-claude').classList.toggle('active', backend === 'claude');
+  const npuFields    = document.getElementById('npu-config-fields');
+  const claudeFields = document.getElementById('claude-config-fields');
+  npuFields.style.display    = backend === 'npu'    ? 'flex' : 'none';
+  claudeFields.style.display = backend === 'claude' ? 'flex' : 'none';
+  if (backend === 'npu')    checkNpuHealth();
+  if (backend === 'claude') checkClaudeHealth();
 }
 
 async function checkNpuHealth() {
@@ -412,6 +435,26 @@ async function checkNpuHealth() {
   }
 }
 
+async function checkClaudeHealth() {
+  const statusEl = document.getElementById('claude-status-line');
+  statusEl.textContent = 'Checking Claude API…';
+  statusEl.className   = 'npu-status';
+  try {
+    const res  = await fetch(`${API_BASE}/claude/health`);
+    const data = await res.json();
+    if (data.online) {
+      statusEl.textContent = `● ONLINE — ${data.model}`;
+      statusEl.className   = 'npu-status online';
+    } else {
+      statusEl.textContent = `○ ${data.reason || data.error || 'API key not configured'}`;
+      statusEl.className   = 'npu-status offline';
+    }
+  } catch {
+    statusEl.textContent = '○ Backend unreachable';
+    statusEl.className   = 'npu-status offline';
+  }
+}
+
 // ── Agent config modal ─────────────────────────────────
 
 async function openModal(agentId) {
@@ -420,21 +463,33 @@ async function openModal(agentId) {
   document.getElementById('modal-title').textContent = `⚙ CONFIGURE ${names[agentId] || agentId}`;
   document.getElementById('modal-overlay').classList.add('open');
 
-  // Show NPU section only for ENZU
-  const npuSection = document.getElementById('npu-section');
-  npuSection.style.display = agentId === 'agent4' ? 'flex' : 'none';
+  // Load current backend for this agent
+  try {
+    const agentRes  = await fetch(`${API_BASE}/agents`);
+    const agentData = await agentRes.json();
+    modalBackend = agentData[agentId]?.backend || 'gpu';
+  } catch { modalBackend = 'gpu'; }
 
-  if (agentId === 'agent4') {
-    // Load current NPU config
-    try {
-      const res  = await fetch(`${API_BASE}/npu/config`);
-      const data = await res.json();
-      document.getElementById('npu-host-input').value  = data.host  || 'http://localhost:8080';
-      document.getElementById('npu-model-input').value = data.model || 'fastflow-lm';
-      modalBackend = data.backend || 'gpu';
-      setBackend(modalBackend);
-    } catch { /* use defaults */ }
-  }
+  // Load NPU config (for NPU fields)
+  try {
+    const res  = await fetch(`${API_BASE}/npu/config`);
+    const data = await res.json();
+    document.getElementById('npu-host-input').value  = data.host  || 'http://localhost:8080';
+    document.getElementById('npu-model-input').value = data.model || 'fastflow-lm';
+  } catch { /* use defaults */ }
+
+  // Load Claude config (for Claude fields)
+  try {
+    const res  = await fetch(`${API_BASE}/claude/config`);
+    const data = await res.json();
+    document.getElementById('claude-model-input').value = data.model || 'claude-opus-4-7';
+    // Don't pre-fill API key — leave blank if not set (security)
+    document.getElementById('claude-key-input').value = '';
+    document.getElementById('claude-key-input').placeholder =
+      data.has_key ? '(key saved — enter new key to change)' : 'sk-ant-...';
+  } catch { /* use defaults */ }
+
+  setBackend(modalBackend);
 
   const sel = document.getElementById('modal-model-sel');
   sel.innerHTML = '<option>Loading…</option>';
@@ -457,26 +512,26 @@ function closeModal() {
 
 async function applyAgentConfig() {
   if (!currentModalAgent) return;
-  const model = document.getElementById('modal-model-sel').value;
-  const role  = document.getElementById('modal-role-sel').value;
+  const agentId = currentModalAgent;
+  const model   = document.getElementById('modal-model-sel').value;
+  const role    = document.getElementById('modal-role-sel').value;
 
   try {
     // Save GPU model + role
     if (model) {
-      await fetch(`${API_BASE}/agents/${currentModalAgent}/config`, {
+      await fetch(`${API_BASE}/agents/${agentId}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model, role })
       });
-      document.getElementById(`model-label-${currentModalAgent}`)
+      document.getElementById(`model-label-${agentId}`)
               .childNodes[0].textContent = model + ' ';
     }
 
-    // Save NPU settings if this is ENZU
-    if (currentModalAgent === 'agent4') {
+    // Save NPU config if NPU is selected
+    if (modalBackend === 'npu') {
       const npuHost  = document.getElementById('npu-host-input').value.trim();
       const npuModel = document.getElementById('npu-model-input').value.trim();
-
       if (npuHost || npuModel) {
         await fetch(`${API_BASE}/npu/config`, {
           method: 'POST',
@@ -484,18 +539,34 @@ async function applyAgentConfig() {
           body: JSON.stringify({ host: npuHost, model: npuModel })
         });
       }
-
-      await fetch(`${API_BASE}/npu/backend`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backend: modalBackend })
-      });
-
-      updateBackendBadge(modalBackend);
-      sysLog(`[CFG] ENZU backend → ${modalBackend.toUpperCase()}${modalBackend === 'npu' ? ` (${npuModel || 'fastflow-lm'})` : ` (${model})`}`);
-    } else {
-      sysLog(`[CFG] ${currentModalAgent} → ${model}`);
     }
+
+    // Save Claude config if Claude is selected
+    if (modalBackend === 'claude') {
+      const claudeKey   = document.getElementById('claude-key-input').value.trim();
+      const claudeModel = document.getElementById('claude-model-input').value.trim();
+      const claudeBody  = {};
+      if (claudeKey)   claudeBody.api_key = claudeKey;
+      if (claudeModel) claudeBody.model   = claudeModel;
+      if (Object.keys(claudeBody).length) {
+        await fetch(`${API_BASE}/claude/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(claudeBody)
+        });
+      }
+    }
+
+    // Set backend for this agent (works for all agents, all backends)
+    await fetch(`${API_BASE}/claude/backend`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: agentId, backend: modalBackend })
+    });
+
+    updateBackendBadge(agentId, modalBackend);
+    const names = { agent1: 'AN', agent2: 'ENLIL', agent3: 'ENKI', agent4: 'ENZU' };
+    sysLog(`[CFG] ${names[agentId] || agentId} backend → ${modalBackend.toUpperCase()}`);
 
     await checkModelStatus();
   } catch (err) {
@@ -572,8 +643,12 @@ sysLog('𒀭 AN  𒂗𒍪 ENLIL  𒂗𒆳 ENKI  𒂗𒍪 ENZU — standing by');
 checkModelStatus();
 setInterval(checkModelStatus, 60_000);
 
-// Load ENZU backend state
-fetch(`${API_BASE}/npu/config`)
+// Load all agent backend states on startup
+fetch(`${API_BASE}/agents`)
   .then(r => r.json())
-  .then(d => updateBackendBadge(d.backend || 'gpu'))
+  .then(data => {
+    Object.keys(data).forEach(agentId => {
+      updateBackendBadge(agentId, data[agentId].backend || 'gpu');
+    });
+  })
   .catch(() => {});

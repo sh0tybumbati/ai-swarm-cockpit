@@ -17,8 +17,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import httpx
+from anthropic import AsyncAnthropic
 from fastapi import WebSocket
-from agents import AGENTS, NPU_CONFIG
+from agents import AGENTS, NPU_CONFIG, CLAUDE_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -253,9 +254,12 @@ class SwarmOrchestrator(ConnectionManager):
     # ── Inference dispatch ─────────────────────────────────────────────────────
 
     async def _run_agent(self, agent_id: str, messages: list) -> str:
-        """Route to GPU (Ollama) or NPU (FastFlowLM) based on agent backend setting."""
-        if AGENTS[agent_id].get("backend") == "npu":
+        """Route to GPU (Ollama), NPU (FastFlowLM), or Claude API based on agent backend."""
+        backend = AGENTS[agent_id].get("backend", "gpu")
+        if backend == "npu":
             return await self._run_npu(agent_id, messages)
+        if backend == "claude":
+            return await self._run_claude(agent_id, messages)
         return await self._run_gpu(agent_id, messages)
 
     # ── NPU streaming — FastFlowLM (OpenAI-compatible) ─────────────────────────
@@ -314,6 +318,58 @@ class SwarmOrchestrator(ConnectionManager):
             await self.send_token(agent_id, "\n[ERROR] NPU inference timed out\n")
         except Exception as exc:
             await self.send_token(agent_id, f"\n[ERROR] {exc}\n")
+
+        await self.send_status(agent_id, "DONE")
+        await self.send_token(agent_id, "\n")
+        return output
+
+    # ── Claude API streaming — Anthropic ──────────────────────────────────────
+
+    async def _run_claude(self, agent_id: str, messages: list) -> str:
+        agent  = AGENTS[agent_id]
+        model  = CLAUDE_CONFIG.get("model", "claude-opus-4-7")
+        api_key = CLAUDE_CONFIG.get("api_key", "")
+        output = ""
+
+        await self.send_status(agent_id, "WORKING")
+        await self._broadcast(agent_id, {"type": "backend", "backend": "claude"})
+        await self.sys_log(f"[{agent.get('deity', agent['name'])}] ▸ Claude: {model}")
+
+        if not api_key:
+            msg = "ANTHROPIC_API_KEY not set — set it via /claude/config or env var"
+            await self.send_token(agent_id, f"\n[ERROR] {msg}\n")
+            await self.sys_log(msg, "error")
+            await self.send_status(agent_id, "ERROR")
+            return ""
+
+        # Convert Ollama-style messages to Anthropic format (strip system role)
+        anthropic_messages = [m for m in messages if m.get("role") != "system"]
+        if not anthropic_messages:
+            anthropic_messages = [{"role": "user", "content": "Begin."}]
+
+        try:
+            client = AsyncAnthropic(api_key=api_key)
+            async with client.messages.stream(
+                model=model,
+                max_tokens=8096,
+                thinking={"type": "adaptive"},
+                system=[{
+                    "type": "text",
+                    "text": agent["system"],
+                    "cache_control": {"type": "ephemeral"},
+                }],
+                messages=anthropic_messages,
+            ) as stream:
+                async for text in stream.text_stream:
+                    output += text
+                    await self.send_token(agent_id, text)
+        except asyncio.CancelledError:
+            await self.send_token(agent_id, "\n[ABORTED]\n")
+            raise
+        except Exception as exc:
+            err = str(exc)
+            await self.send_token(agent_id, f"\n[ERROR] Claude: {err}\n")
+            await self.sys_log(f"Claude error: {err}", "error")
 
         await self.send_status(agent_id, "DONE")
         await self.send_token(agent_id, "\n")
