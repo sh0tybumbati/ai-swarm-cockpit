@@ -422,7 +422,14 @@ body {
 
 #cmd-form {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cmd-row2 {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
 #cmd-form input {
@@ -436,7 +443,7 @@ body {
   transition: border-color .15s;
   min-width: 0;
 }
-#cmd-input { flex: 1; }
+#cmd-input { width: 100%; }
 #cmd-input:focus {
   border-color: var(--gold);
   box-shadow: 0 0 8px rgba(232,184,0,.2);
