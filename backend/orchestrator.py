@@ -17,9 +17,12 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import httpx
+import shutil
+import tempfile
+
 from anthropic import AsyncAnthropic
 from fastapi import WebSocket
-from agents import AGENTS, NPU_CONFIG, CLAUDE_CONFIG
+from agents import AGENTS, NPU_CONFIG, CLAUDE_CONFIG, CLAUDE_CLI_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -254,12 +257,14 @@ class SwarmOrchestrator(ConnectionManager):
     # ── Inference dispatch ─────────────────────────────────────────────────────
 
     async def _run_agent(self, agent_id: str, messages: list) -> str:
-        """Route to GPU (Ollama), NPU (FastFlowLM), or Claude API based on agent backend."""
+        """Route to GPU (Ollama), NPU (FastFlowLM), Claude API, or Claude CLI."""
         backend = AGENTS[agent_id].get("backend", "gpu")
         if backend == "npu":
             return await self._run_npu(agent_id, messages)
         if backend == "claude":
             return await self._run_claude(agent_id, messages)
+        if backend == "cli":
+            return await self._run_claude_cli(agent_id, messages)
         return await self._run_gpu(agent_id, messages)
 
     # ── NPU streaming — FastFlowLM (OpenAI-compatible) ─────────────────────────
@@ -370,6 +375,116 @@ class SwarmOrchestrator(ConnectionManager):
             err = str(exc)
             await self.send_token(agent_id, f"\n[ERROR] Claude: {err}\n")
             await self.sys_log(f"Claude error: {err}", "error")
+
+        await self.send_status(agent_id, "DONE")
+        await self.send_token(agent_id, "\n")
+        return output
+
+    # ── Claude Code CLI — subprocess streaming ─────────────────────────────────
+
+    async def _run_claude_cli(self, agent_id: str, messages: list) -> str:
+        agent   = AGENTS[agent_id]
+        model   = CLAUDE_CLI_CONFIG.get("model", "claude-opus-4-7")
+        cli_bin = CLAUDE_CLI_CONFIG.get("bin", "claude")
+        timeout = CLAUDE_CLI_CONFIG.get("timeout", 300)
+        output  = ""
+
+        await self.send_status(agent_id, "WORKING")
+        await self._broadcast(agent_id, {"type": "backend", "backend": "cli"})
+        await self.sys_log(f"[{agent.get('deity', agent['name'])}] ▸ Claude CLI: {model}")
+
+        # Resolve the binary path — check PATH then common install locations
+        resolved = shutil.which(cli_bin)
+        if not resolved:
+            for candidate in [
+                "/data/data/com.termux/files/usr/bin/claude",
+                "/usr/local/bin/claude",
+                "/usr/bin/claude",
+                f"{__import__('os').path.expanduser('~')}/.npm-global/bin/claude",
+                f"{__import__('os').path.expanduser('~')}/.local/bin/claude",
+            ]:
+                if __import__('os').path.isfile(candidate):
+                    resolved = candidate
+                    break
+
+        if not resolved:
+            msg = (
+                "claude CLI not found — install Claude Code:\n"
+                "  npm install -g @anthropic-ai/claude-code\n"
+                "  or set CLAUDE_BIN env var to the full path"
+            )
+            await self.send_token(agent_id, f"\n[ERROR] {msg}\n")
+            await self.sys_log(msg.split("\n")[0], "error")
+            await self.send_status(agent_id, "ERROR")
+            return ""
+
+        # Build a single prompt: system instructions + conversation
+        system_block = f"[SYSTEM INSTRUCTIONS]\n{agent['system']}\n\n"
+        conv_lines   = []
+        for m in messages:
+            role = "Assistant" if m.get("role") == "assistant" else "User"
+            conv_lines.append(f"{role}: {m['content']}")
+        full_prompt = system_block + "\n\n".join(conv_lines)
+
+        # Write prompt to a temp file to avoid shell argument length limits
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt",
+                                          delete=False, encoding="utf-8")
+        tmp.write(full_prompt)
+        tmp.flush()
+        tmp.close()
+        tmp_path = tmp.name
+
+        proc = None
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                resolved, "--print",
+                "--model", model,
+                "--input-format", "text",
+                stdin=open(tmp_path, "rb"),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Stream stdout in chunks
+            async def _read_stdout():
+                nonlocal output
+                while True:
+                    chunk = await proc.stdout.read(256)
+                    if not chunk:
+                        break
+                    text = chunk.decode("utf-8", errors="replace")
+                    output += text
+                    await self.send_token(agent_id, text)
+
+            try:
+                await asyncio.wait_for(_read_stdout(), timeout=timeout)
+            except asyncio.TimeoutError:
+                await self.send_token(agent_id, "\n[ERROR] Claude CLI timed out\n")
+                await self.sys_log(f"Claude CLI timed out after {timeout}s", "error")
+
+            await proc.wait()
+
+            # Surface any stderr as a warning (CLI often prints status info there)
+            if proc.returncode != 0:
+                stderr_raw = await proc.stderr.read()
+                stderr_txt = stderr_raw.decode("utf-8", errors="replace").strip()
+                if stderr_txt:
+                    await self.sys_log(f"[CLI stderr] {stderr_txt[:200]}", "warn")
+
+        except asyncio.CancelledError:
+            if proc and proc.returncode is None:
+                proc.kill()
+            await self.send_token(agent_id, "\n[ABORTED]\n")
+            raise
+        except FileNotFoundError:
+            msg = f"claude binary not executable at: {resolved}"
+            await self.send_token(agent_id, f"\n[ERROR] {msg}\n")
+            await self.sys_log(msg, "error")
+        except Exception as exc:
+            await self.send_token(agent_id, f"\n[ERROR] Claude CLI: {exc}\n")
+            await self.sys_log(f"Claude CLI error: {exc}", "error")
+        finally:
+            __import__('os').unlink(tmp_path)
 
         await self.send_status(agent_id, "DONE")
         await self.send_token(agent_id, "\n")

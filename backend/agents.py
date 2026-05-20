@@ -15,6 +15,15 @@ CLAUDE_CONFIG: dict = {
     "model":   os.environ.get("CLAUDE_MODEL", "claude-opus-4-7"),
 }
 
+# ── Claude Code CLI config ──────────────────────────────
+# Uses your Claude subscription (Pro/Max) — no API key needed.
+# Requires `claude` CLI installed: npm install -g @anthropic-ai/claude-code
+CLAUDE_CLI_CONFIG: dict = {
+    "model":    os.environ.get("CLAUDE_CLI_MODEL", "claude-opus-4-7"),
+    "bin":      os.environ.get("CLAUDE_BIN", "claude"),   # path to claude binary
+    "timeout":  int(os.environ.get("CLAUDE_CLI_TIMEOUT", "300")),
+}
+
 AGENTS: dict = {
     "agent1": {
         "name": "Engine Architect",
@@ -23,7 +32,7 @@ AGENTS: dict = {
         "deity": "AN",
         "emoji": "🦅",
         "color": "#e8b800",
-        "backend": "gpu",   # "gpu" | "npu" | "claude"
+        "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
         "system": (
             "You are the Engine Architect for a web game development swarm. "
             "Design and implement the core game engine: ECS (Entity-Component-System) architecture, "
@@ -41,7 +50,7 @@ AGENTS: dict = {
         "deity": "ENLIL",
         "emoji": "⚡",
         "color": "#00aaff",
-        "backend": "gpu",   # "gpu" | "npu" | "claude"
+        "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
         "system": (
             "You are The Renderer for a web game development swarm. "
             "Your domain is WebGL shaders, Canvas 2D pipelines, sprite batching, "
@@ -58,7 +67,7 @@ AGENTS: dict = {
         "deity": "ENKI",
         "emoji": "🐍",
         "color": "#3dffd0",
-        "backend": "gpu",   # "gpu" | "npu" | "claude"
+        "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
         "system": (
             "You are the DOM & Input Bridge for a web game development swarm. "
             "Handle all browser interface concerns: keyboard/mouse/gamepad/touch input, "
@@ -75,7 +84,7 @@ AGENTS: dict = {
         "deity": "ENZU",
         "emoji": "👁️",
         "color": "#b44ff5",
-        "backend": "gpu",   # "gpu" | "npu"  — only agent4 supports NPU
+        "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli" | "cli"
         "system": (
             "You are The Sentinel — QA and verification agent for a web game development swarm.\n\n"
             "Review the code from the other agents and respond with EXACTLY one of these two verdicts:\n\n"

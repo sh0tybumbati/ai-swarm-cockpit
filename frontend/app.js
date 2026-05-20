@@ -355,6 +355,11 @@ async function checkModelStatus() {
         dot.title     = `Claude API — ${agentData[id]?.model || 'claude-opus-4-7'}`;
         return;
       }
+      if (backend === 'cli') {
+        dot.className = 'model-dot ok';
+        dot.title     = 'Claude Code CLI (subscription)';
+        return;
+      }
       if (backend === 'npu') {
         dot.className = 'model-dot ok';
         dot.title     = 'NPU — FastFlowLM';
@@ -386,33 +391,38 @@ async function checkModelStatus() {
 
 const CLI_SUFFIX = { agent1: 'a1-cli', agent2: 'a2-cli', agent3: 'a3-cli', agent4: 'a4-cli' };
 
+const BACKEND_LABELS = { gpu: 'GPU', npu: 'NPU', claude: 'API', cli: 'CLI' };
+
 function updateBackendBadge(agentId, backend) {
   agentBackends[agentId] = backend;
-  const badge = document.getElementById(`backend-badge-${agentId}`);
-  const prof  = document.getElementById(`profile-${agentId}`);
-  const cli   = document.querySelector(`.cli-block.${CLI_SUFFIX[agentId]}`);
+  const badge   = document.getElementById(`backend-badge-${agentId}`);
+  const prof    = document.getElementById(`profile-${agentId}`);
+  const cliEl   = document.querySelector(`.cli-block.${CLI_SUFFIX[agentId]}`);
   if (!badge) return;
-  badge.textContent = backend.toUpperCase();
+  badge.textContent = BACKEND_LABELS[backend] || backend.toUpperCase();
   const isNpu    = backend === 'npu';
   const isClaude = backend === 'claude';
-  badge.className   = `backend-badge${isNpu ? ' npu' : isClaude ? ' claude' : ''}`;
+  const isCli    = backend === 'cli';
+  badge.className   = `backend-badge${isNpu ? ' npu' : isClaude ? ' claude' : isCli ? ' cli' : ''}`;
   prof?.classList.toggle('npu-active',    isNpu);
   prof?.classList.toggle('claude-active', isClaude);
-  cli?.classList.toggle('npu-active',     isNpu);
-  cli?.classList.toggle('claude-active',  isClaude);
+  prof?.classList.toggle('cli-active',    isCli);
+  cliEl?.classList.toggle('npu-active',   isNpu);
+  cliEl?.classList.toggle('claude-active',isClaude);
+  cliEl?.classList.toggle('cli-active',   isCli);
 }
 
 function setBackend(backend) {
   modalBackend = backend;
-  document.getElementById('btn-gpu').classList.toggle('active',    backend === 'gpu');
-  document.getElementById('btn-npu').classList.toggle('active',    backend === 'npu');
-  document.getElementById('btn-claude').classList.toggle('active', backend === 'claude');
-  const npuFields    = document.getElementById('npu-config-fields');
-  const claudeFields = document.getElementById('claude-config-fields');
-  npuFields.style.display    = backend === 'npu'    ? 'flex' : 'none';
-  claudeFields.style.display = backend === 'claude' ? 'flex' : 'none';
+  ['gpu', 'npu', 'claude', 'cli'].forEach(b => {
+    document.getElementById(`btn-${b}`)?.classList.toggle('active', backend === b);
+  });
+  document.getElementById('npu-config-fields').style.display    = backend === 'npu'    ? 'flex' : 'none';
+  document.getElementById('claude-config-fields').style.display = backend === 'claude' ? 'flex' : 'none';
+  document.getElementById('cli-config-fields').style.display    = backend === 'cli'    ? 'flex' : 'none';
   if (backend === 'npu')    checkNpuHealth();
   if (backend === 'claude') checkClaudeHealth();
+  if (backend === 'cli')    checkCliHealth();
 }
 
 async function checkNpuHealth() {
@@ -455,6 +465,26 @@ async function checkClaudeHealth() {
   }
 }
 
+async function checkCliHealth() {
+  const statusEl = document.getElementById('cli-status-line');
+  statusEl.textContent = 'Detecting claude CLI…';
+  statusEl.className   = 'npu-status';
+  try {
+    const res  = await fetch(`${API_BASE}/claude-cli/health`);
+    const data = await res.json();
+    if (data.online) {
+      statusEl.textContent = `● FOUND — ${data.version || data.bin} (${data.model})`;
+      statusEl.className   = 'npu-status online';
+    } else {
+      statusEl.textContent = `○ ${data.reason || 'CLI not found'}`;
+      statusEl.className   = 'npu-status offline';
+    }
+  } catch {
+    statusEl.textContent = '○ Health check failed';
+    statusEl.className   = 'npu-status offline';
+  }
+}
+
 // ── Agent config modal ─────────────────────────────────
 
 async function openModal(agentId) {
@@ -478,15 +508,22 @@ async function openModal(agentId) {
     document.getElementById('npu-model-input').value = data.model || 'fastflow-lm';
   } catch { /* use defaults */ }
 
-  // Load Claude config (for Claude fields)
+  // Load Claude API config
   try {
     const res  = await fetch(`${API_BASE}/claude/config`);
     const data = await res.json();
     document.getElementById('claude-model-input').value = data.model || 'claude-opus-4-7';
-    // Don't pre-fill API key — leave blank if not set (security)
-    document.getElementById('claude-key-input').value = '';
+    document.getElementById('claude-key-input').value   = '';
     document.getElementById('claude-key-input').placeholder =
       data.has_key ? '(key saved — enter new key to change)' : 'sk-ant-...';
+  } catch { /* use defaults */ }
+
+  // Load Claude CLI config
+  try {
+    const res  = await fetch(`${API_BASE}/claude-cli/config`);
+    const data = await res.json();
+    document.getElementById('cli-model-input').value = data.model || 'claude-opus-4-7';
+    document.getElementById('cli-bin-input').value   = data.bin === 'claude' ? '' : (data.bin || '');
   } catch { /* use defaults */ }
 
   setBackend(modalBackend);
@@ -541,7 +578,7 @@ async function applyAgentConfig() {
       }
     }
 
-    // Save Claude config if Claude is selected
+    // Save Claude API config if selected
     if (modalBackend === 'claude') {
       const claudeKey   = document.getElementById('claude-key-input').value.trim();
       const claudeModel = document.getElementById('claude-model-input').value.trim();
@@ -553,6 +590,22 @@ async function applyAgentConfig() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(claudeBody)
+        });
+      }
+    }
+
+    // Save Claude CLI config if selected
+    if (modalBackend === 'cli') {
+      const cliModel = document.getElementById('cli-model-input').value.trim();
+      const cliBin   = document.getElementById('cli-bin-input').value.trim();
+      const cliBody  = {};
+      if (cliModel) cliBody.model = cliModel;
+      if (cliBin)   cliBody.bin   = cliBin;
+      if (Object.keys(cliBody).length) {
+        await fetch(`${API_BASE}/claude-cli/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cliBody)
         });
       }
     }

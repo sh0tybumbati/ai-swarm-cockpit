@@ -156,6 +156,7 @@
             <button id="btn-gpu"    class="backend-opt active" onclick="setBackend('gpu')">GPU — Ollama</button>
             <button id="btn-npu"    class="backend-opt"        onclick="setBackend('npu')">NPU — FastFlowLM</button>
             <button id="btn-claude" class="backend-opt"        onclick="setBackend('claude')">☁ Claude API</button>
+            <button id="btn-cli"    class="backend-opt"        onclick="setBackend('cli')">⬡ Claude CLI</button>
           </div>
           <!-- NPU config fields -->
           <div id="npu-config-fields" style="display:none; margin-top:8px; flex-direction:column; gap:6px;">
@@ -169,7 +170,7 @@
             </div>
             <div id="npu-status-line" class="npu-status"></div>
           </div>
-          <!-- Claude config fields -->
+          <!-- Claude API config fields -->
           <div id="claude-config-fields" style="display:none; margin-top:8px; flex-direction:column; gap:6px;">
             <div class="field">
               <label>☁ ANTHROPIC API KEY</label>
@@ -180,6 +181,18 @@
               <input type="text" id="claude-model-input" placeholder="claude-opus-4-7" />
             </div>
             <div id="claude-status-line" class="npu-status"></div>
+          </div>
+          <!-- Claude CLI config fields -->
+          <div id="cli-config-fields" style="display:none; margin-top:8px; flex-direction:column; gap:6px;">
+            <div class="field">
+              <label>⬡ CLAUDE CLI MODEL</label>
+              <input type="text" id="cli-model-input" placeholder="claude-opus-4-7" />
+            </div>
+            <div class="field">
+              <label>⬡ BINARY PATH <span style="opacity:0.5">(leave blank for auto-detect)</span></label>
+              <input type="text" id="cli-bin-input" placeholder="claude" />
+            </div>
+            <div id="cli-status-line" class="npu-status"></div>
           </div>
         </div>
         <div class="field">

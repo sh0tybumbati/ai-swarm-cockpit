@@ -12,7 +12,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from agents import AGENTS, NPU_CONFIG, CLAUDE_CONFIG
+from agents import AGENTS, NPU_CONFIG, CLAUDE_CONFIG, CLAUDE_CLI_CONFIG
 from orchestrator import (OUTPUT_BASE, SwarmOrchestrator,
                           list_output_files, load_context, save_context,
                           _safe_name)
@@ -232,6 +232,19 @@ async def services_status():
             "has_key": bool(CLAUDE_CONFIG["api_key"]),
             "model": CLAUDE_CONFIG["model"],
         }
+        import shutil as _shutil, os as _os
+        cli_bin  = CLAUDE_CLI_CONFIG.get("bin", "claude")
+        resolved = _shutil.which(cli_bin) or any(
+            _os.path.isfile(c) for c in [
+                "/data/data/com.termux/files/usr/bin/claude",
+                "/usr/local/bin/claude",
+                _os.path.expanduser("~/.npm-global/bin/claude"),
+            ]
+        )
+        results["claude_cli"] = {
+            "available": bool(resolved),
+            "model": CLAUDE_CLI_CONFIG["model"],
+        }
         return results
 
 
@@ -257,14 +270,19 @@ async def set_claude_config(payload: dict):
             "has_key": bool(CLAUDE_CONFIG["api_key"])}
 
 
+VALID_BACKENDS = ("gpu", "npu", "claude", "cli")
+
 @app.post("/claude/backend")
-async def set_agent_backend_claude(payload: dict):
+async def set_agent_backend(payload: dict):
     agent_id = payload.get("agent_id", "agent1")
     backend  = payload.get("backend", "gpu")
     if agent_id not in AGENTS:
         raise HTTPException(404, "Agent not found")
-    if backend not in ("gpu", "npu", "claude"):
-        return JSONResponse({"error": "backend must be 'gpu', 'npu', or 'claude'"}, status_code=400)
+    if backend not in VALID_BACKENDS:
+        return JSONResponse(
+            {"error": f"backend must be one of: {', '.join(VALID_BACKENDS)}"},
+            status_code=400
+        )
     AGENTS[agent_id]["backend"] = backend
     return {"status": "updated", "agent_id": agent_id, "backend": backend}
 
@@ -277,9 +295,76 @@ async def claude_health():
     try:
         import anthropic
         client  = anthropic.AsyncAnthropic(api_key=CLAUDE_CONFIG["api_key"])
-        # lightweight list-models call to verify key validity
         models  = await client.models.list()
         ids     = [m.id for m in models.data]
         return {"online": True, "model": CLAUDE_CONFIG["model"], "available_models": ids[:6]}
     except Exception as exc:
         return {"online": False, "error": str(exc)}
+
+
+# ── Claude Code CLI config & health ───────────────────────────────────────────
+
+@app.get("/claude-cli/config")
+async def get_claude_cli_config():
+    return {
+        "model":   CLAUDE_CLI_CONFIG["model"],
+        "bin":     CLAUDE_CLI_CONFIG["bin"],
+        "timeout": CLAUDE_CLI_CONFIG["timeout"],
+    }
+
+
+@app.post("/claude-cli/config")
+async def set_claude_cli_config(payload: dict):
+    if "model"   in payload: CLAUDE_CLI_CONFIG["model"]   = payload["model"].strip()
+    if "bin"     in payload: CLAUDE_CLI_CONFIG["bin"]     = payload["bin"].strip()
+    if "timeout" in payload: CLAUDE_CLI_CONFIG["timeout"] = int(payload["timeout"])
+    return {"status": "updated", "config": CLAUDE_CLI_CONFIG}
+
+
+@app.get("/claude-cli/health")
+async def claude_cli_health():
+    import shutil, asyncio as _aio, os
+
+    cli_bin  = CLAUDE_CLI_CONFIG.get("bin", "claude")
+    resolved = shutil.which(cli_bin)
+
+    # Also scan common install paths (important on Termux / Linux without global npm)
+    if not resolved:
+        candidates = [
+            "/data/data/com.termux/files/usr/bin/claude",
+            "/usr/local/bin/claude",
+            "/usr/bin/claude",
+            os.path.expanduser("~/.npm-global/bin/claude"),
+            os.path.expanduser("~/.local/bin/claude"),
+            os.path.expanduser("~/node_modules/.bin/claude"),
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                resolved = c
+                break
+
+    if not resolved:
+        return {
+            "online": False,
+            "reason": f"'{cli_bin}' not found — install: npm install -g @anthropic-ai/claude-code",
+        }
+
+    # Run `claude --version` to confirm it works
+    try:
+        proc = await _aio.create_subprocess_exec(
+            resolved, "--version",
+            stdout=_aio.subprocess.PIPE,
+            stderr=_aio.subprocess.PIPE,
+        )
+        stdout, stderr = await _aio.wait_for(proc.communicate(), timeout=10)
+        version = (stdout or stderr).decode("utf-8", errors="replace").strip().splitlines()[0]
+        return {
+            "online":  True,
+            "bin":     resolved,
+            "version": version,
+            "model":   CLAUDE_CLI_CONFIG["model"],
+        }
+    except _aio.TimeoutError:
+        return {"online": False, "reason": "claude --version timed out"}
+    except Exception as exc:
+        return {"online": False, "reason": str(exc)}
