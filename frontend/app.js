@@ -649,6 +649,24 @@ async function applyAgentConfig() {
     });
 
     updateBackendBadge(agentId, modalBackend);
+
+    // Update model label to reflect active backend
+    const labelEl = document.getElementById(`model-label-${agentId}`);
+    if (labelEl) {
+      let labelText = '';
+      if (modalBackend === 'gpu') {
+        labelText = model || labelEl.childNodes[0]?.textContent?.trim() || '';
+      } else if (modalBackend === 'npu') {
+        labelText = document.getElementById('npu-model-input').value.trim() || 'llama3.2';
+      } else if (modalBackend === 'claude') {
+        labelText = document.getElementById('claude-model-input').value.trim() || 'claude-opus-4-7';
+      } else if (modalBackend === 'cli') {
+        labelText = document.getElementById('cli-model-input').value.trim() || 'claude-sonnet-4-6';
+        labelText = '⬡ ' + labelText;
+      }
+      if (labelText) labelEl.childNodes[0].textContent = labelText + ' ';
+    }
+
     const names = { agent1: 'AN', agent2: 'ENLIL', agent3: 'ENKI', agent4: 'ENZU' };
     sysLog(`[CFG] ${names[agentId] || agentId} backend → ${modalBackend.toUpperCase()}`);
 
