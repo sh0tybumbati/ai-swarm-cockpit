@@ -764,9 +764,9 @@ class SwarmOrchestrator(ConnectionManager):
                         else f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS]}"
                     )},
                     {"role": "user", "content": (
-                        f"AN has assigned you a task in the PLAN section above. Implement it now"
-                        f"{', integrating with ENLIL\\'s work' if resp2 else ''}."
-                        f"{file_note}{a3_note}"
+                        ("AN has assigned you a task in the PLAN section above. Implement it now"
+                         + (", integrating with ENLIL's work" if resp2 else "") + "."
+                         + file_note + a3_note)
                     )},
                 ])
                 last["agent3"] = all_out["agent3"] = resp3
