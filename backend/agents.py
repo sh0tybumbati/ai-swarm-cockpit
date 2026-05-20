@@ -27,7 +27,7 @@ CLAUDE_CLI_CONFIG: dict = {
 AGENTS: dict = {
     "agent1": {
         "name": "Engine Architect",
-        "model": "qwen2.5-coder:14b",
+        "model": "qwen2.5-coder:14b-instruct",
         "role": "engine_architect",
         "deity": "AN",
         "emoji": "🦅",
@@ -45,7 +45,7 @@ AGENTS: dict = {
     },
     "agent2": {
         "name": "The Renderer",
-        "model": "deepseek-coder:6.7b",
+        "model": "deepseek-coder:6.7b-instruct",
         "role": "renderer",
         "deity": "ENLIL",
         "emoji": "⚡",
@@ -62,7 +62,7 @@ AGENTS: dict = {
     },
     "agent3": {
         "name": "DOM & Input Bridge",
-        "model": "qwen2.5-coder:7b",
+        "model": "qwen2.5-coder:7b-instruct",
         "role": "dom_bridge",
         "deity": "ENKI",
         "emoji": "🐍",
@@ -79,7 +79,7 @@ AGENTS: dict = {
     },
     "agent4": {
         "name": "The Sentinel",
-        "model": "mistral:7b",
+        "model": "mistral:v0.3",
         "role": "sentinel",
         "deity": "ENZU",
         "emoji": "👁️",
