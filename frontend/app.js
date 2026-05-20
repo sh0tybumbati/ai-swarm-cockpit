@@ -185,8 +185,20 @@ function onFileSaved(msg) {
   const kb = msg.size ? ` (${(msg.size / 1024).toFixed(1)} KB)` : '';
   sysLog(`[FILE] Saved: ${msg.file}${kb}`, 'info');
 
-  // Auto-refresh iframe for web assets
-  const webExts = ['.html', '.js', '.ts', '.css'];
+  // Auto-load index.html (or first .html) into preview when saved
+  if (msg.file.match(/index\.html?$/i) || msg.file.match(/\.html?$/i)) {
+    const project = currentProject || document.getElementById('project-input').value.trim();
+    const url = `${API_BASE}/files/${encodeURIComponent(project)}/${encodeURIComponent(msg.file)}`;
+    const input = document.getElementById('preview-url-input');
+    const frame = document.getElementById('preview-frame');
+    input.value = url;
+    frame.src = url;
+    sysLog(`[PREVIEW] Auto-loaded: ${msg.file}`, 'info');
+    return;
+  }
+
+  // Auto-refresh iframe for other web assets if already loaded
+  const webExts = ['.js', '.ts', '.css'];
   if (autoRefresh && webExts.some(ext => msg.file.endsWith(ext))) {
     setTimeout(() => {
       const frame = document.getElementById('preview-frame');
