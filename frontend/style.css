@@ -67,17 +67,17 @@ body {
 }
 
 /* ── Explicit cell placement ── */
-.profile-block.a1  { grid-column: 1;          grid-row: 1 / span 2; z-index: 2; position: relative; }
-.cli-block.a1-cli  { grid-column: 2;          grid-row: 1;          z-index: 2; position: relative; }
-.top-console       { grid-column: 3;          grid-row: 1;          z-index: 2; position: relative; }
-.cli-block.a2-cli  { grid-column: 4;          grid-row: 1;          z-index: 2; position: relative; }
-.profile-block.a2  { grid-column: 5;          grid-row: 1 / span 2; z-index: 2; position: relative; }
+.profile-block.a1  { grid-column: 1;          grid-row: 1;          z-index: 2; position: relative; }
+.cli-block.a1-cli  { grid-column: 1;          grid-row: 2;          z-index: 2; position: relative; }
+.top-console       { grid-column: 2 / span 3; grid-row: 1;          z-index: 2; position: relative; }
+.profile-block.a2  { grid-column: 5;          grid-row: 1;          z-index: 2; position: relative; }
+.cli-block.a2-cli  { grid-column: 5;          grid-row: 2;          z-index: 2; position: relative; }
 .render-window     { grid-column: 2 / span 3; grid-row: 2 / span 3; z-index: 1; position: relative; }
-.profile-block.a3  { grid-column: 1;          grid-row: 4 / span 2; z-index: 2; position: relative; }
-.cli-block.a3-cli  { grid-column: 2;          grid-row: 5;          z-index: 2; position: relative; }
-.cli-block.a4-cli  { grid-column: 4;          grid-row: 5;          z-index: 2; position: relative; }
-.profile-block.a4  { grid-column: 5;          grid-row: 4 / span 2; z-index: 2; position: relative; }
-.command-prompt    { grid-column: 3;          grid-row: 5;          z-index: 2; position: relative; }
+.cli-block.a3-cli  { grid-column: 1;          grid-row: 4;          z-index: 2; position: relative; }
+.profile-block.a3  { grid-column: 1;          grid-row: 5;          z-index: 2; position: relative; }
+.command-prompt    { grid-column: 2 / span 3; grid-row: 5;          z-index: 2; position: relative; }
+.cli-block.a4-cli  { grid-column: 5;          grid-row: 4;          z-index: 2; position: relative; }
+.profile-block.a4  { grid-column: 5;          grid-row: 5;          z-index: 2; position: relative; }
 
 /* ═══════════════════════════════════════════════════════
    PANEL BASE
@@ -152,8 +152,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 14px 6px 8px;
-  gap: 7px;
+  padding: 10px 6px 6px;
+  gap: 5px;
   cursor: pointer;
   text-align: center;
   transition: background 0.15s;
