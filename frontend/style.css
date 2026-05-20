@@ -31,7 +31,7 @@
   --text:      #8ab0cc;
   --text-dim:  #2a4060;
   --text-hi:   #c8dff0;
-  --cuneiform: rgba(232, 184, 0, 0.35);
+  --cuneiform: rgba(232, 184, 0, 0.65);
 
   /* ── Glows ── */
   --glow-cyan:   0 0 8px #00d9f5, 0 0 20px rgba(0, 217, 245, 0.3);
@@ -127,21 +127,22 @@ body {
    CUNEIFORM BORDER STRIP (decorative top edge)
 ═══════════════════════════════════════════════════════ */
 .profile-block::before,
-.cli-block::before,
 .top-console::before {
-  content: '𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳';
+  content: '𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹';
   display: block;
   position: absolute;
   top: 0; left: 0; right: 0;
-  font-size: 6px;
-  line-height: 1;
-  letter-spacing: 0.05em;
+  font-size: 9px;
+  line-height: 1.5;
+  letter-spacing: 0.1em;
   color: var(--cuneiform);
+  background: rgba(0,0,0,0.4);
+  border-bottom: 1px solid rgba(232,184,0,0.2);
   overflow: hidden;
   white-space: nowrap;
   pointer-events: none;
-  z-index: 1;
-  padding: 1px 4px;
+  z-index: 3;
+  padding: 2px 6px;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -152,13 +153,14 @@ body {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  padding: 8px 12px 8px 10px;
-  gap: 10px;
+  padding: 22px 12px 8px 12px; /* top pad clears cuneiform strip */
+  gap: 12px;
   cursor: pointer;
   text-align: left;
   transition: background 0.15s;
   user-select: none;
   overflow: hidden;
+  position: relative; /* needed for ::before absolute positioning */
 }
 .profile-block:hover { background: var(--panel2); }
 
@@ -217,7 +219,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px;
+  max-width: 100%;
   letter-spacing: 0.05em;
 }
 
@@ -235,8 +237,8 @@ body {
   display: flex;
   align-items: center;
   gap: 5px;
-  justify-content: center;
-  margin-top: 3px;
+  justify-content: flex-start;
+  margin-top: 2px;
 }
 
 .led {
@@ -285,7 +287,7 @@ body {
 .a3 .tps-readout { color: var(--a3); }
 .a4 .tps-readout { color: var(--a4); }
 .tps-track {
-  width: 80px; height: 3px;
+  width: 100%; max-width: 140px; height: 3px;
   background: rgba(255,255,255,0.08);
   border-radius: 2px;
   overflow: hidden;
