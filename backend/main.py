@@ -202,6 +202,34 @@ async def npu_health():
             return {"online": False, "host": NPU_CONFIG["host"], "error": str(exc)}
 
 
+@app.get("/services")
+async def services_status():
+    """Single endpoint showing health of all dependent services."""
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        results = {}
+
+        # Ollama
+        try:
+            r = await client.get("http://localhost:11434/api/tags")
+            models = [m["name"] for m in r.json().get("models", [])]
+            results["ollama"] = {"online": True, "models": models, "count": len(models)}
+        except Exception as e:
+            results["ollama"] = {"online": False, "error": str(e)}
+
+        # FastFlowLM / NPU
+        try:
+            r = await client.get(f"{NPU_CONFIG['host']}/v1/models")
+            npu_models = [m.get("id", "") for m in r.json().get("data", [])]
+            results["fastflow"] = {"online": True, "host": NPU_CONFIG["host"],
+                                   "models": npu_models}
+        except Exception as e:
+            results["fastflow"] = {"online": False, "host": NPU_CONFIG["host"],
+                                   "error": str(e)}
+
+        results["agent4_backend"] = AGENTS["agent4"].get("backend", "gpu")
+        return results
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "1.2.0", "agents": list(AGENTS.keys())}
