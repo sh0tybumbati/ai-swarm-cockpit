@@ -819,12 +819,19 @@ sysLog('𒀭 AN  𒂗𒍪 ENLIL  𒂗𒆳 ENKI  𒂗𒍪 ENZU  𒀭𒇻 NISABA �
 checkModelStatus();
 setInterval(checkModelStatus, 60_000);
 
-// Load all agent backend states on startup
+// Load all agent backend states and model labels on startup
 fetch(`${API_BASE}/agents`)
   .then(r => r.json())
   .then(data => {
     Object.keys(data).forEach(agentId => {
-      updateBackendBadge(agentId, data[agentId].backend || 'gpu');
+      const agent = data[agentId];
+      updateBackendBadge(agentId, agent.backend || 'gpu');
+      const labelEl = document.getElementById(`model-label-${agentId}`);
+      if (labelEl && agent.model) {
+        const dot = labelEl.querySelector('.model-dot');
+        labelEl.childNodes[0].textContent = agent.model + ' ';
+        if (dot) labelEl.appendChild(dot);
+      }
     });
   })
   .catch(() => {});
