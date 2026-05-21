@@ -12,7 +12,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from agents import AGENTS, NPU_CONFIG, CLAUDE_CONFIG, CLAUDE_CLI_CONFIG
+from agents import AGENTS, NPU_CONFIG, CPU_CONFIG, CLAUDE_CONFIG, CLAUDE_CLI_CONFIG
 from orchestrator import (OUTPUT_BASE, SwarmOrchestrator,
                           list_output_files, load_context, save_context,
                           _safe_name)
@@ -207,6 +207,31 @@ async def npu_health():
             return {"online": False, "host": NPU_CONFIG["host"], "error": str(exc)}
 
 
+# ── CPU Ollama config & health ────────────────────────────────────────────────
+
+@app.get("/cpu/config")
+async def get_cpu_config():
+    return {"host": CPU_CONFIG["host"], "model": CPU_CONFIG["model"]}
+
+
+@app.post("/cpu/config")
+async def set_cpu_config(payload: dict):
+    if "host"  in payload: CPU_CONFIG["host"]  = payload["host"].rstrip("/")
+    if "model" in payload: CPU_CONFIG["model"] = payload["model"]
+    return {"status": "updated", "config": CPU_CONFIG}
+
+
+@app.get("/cpu/health")
+async def cpu_health():
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        try:
+            resp   = await client.get(f"{CPU_CONFIG['host']}/api/tags")
+            models = [m["name"] for m in resp.json().get("models", [])]
+            return {"online": True, "host": CPU_CONFIG["host"], "models": models}
+        except Exception as exc:
+            return {"online": False, "host": CPU_CONFIG["host"], "error": str(exc)}
+
+
 @app.get("/services")
 async def services_status():
     """Single endpoint showing health of all dependent services."""
@@ -220,6 +245,16 @@ async def services_status():
             results["ollama"] = {"online": True, "models": models, "count": len(models)}
         except Exception as e:
             results["ollama"] = {"online": False, "error": str(e)}
+
+        # CPU Ollama (second daemon, OLLAMA_NUM_GPU=0)
+        try:
+            r = await client.get(f"{CPU_CONFIG['host']}/api/tags")
+            cpu_models = [m["name"] for m in r.json().get("models", [])]
+            results["cpu_ollama"] = {"online": True, "host": CPU_CONFIG["host"],
+                                     "models": cpu_models, "count": len(cpu_models)}
+        except Exception as e:
+            results["cpu_ollama"] = {"online": False, "host": CPU_CONFIG["host"],
+                                     "error": str(e)}
 
         # FastFlowLM / NPU
         try:
@@ -275,7 +310,7 @@ async def set_claude_config(payload: dict):
             "has_key": bool(CLAUDE_CONFIG["api_key"])}
 
 
-VALID_BACKENDS = ("gpu", "npu", "claude", "cli")
+VALID_BACKENDS = ("gpu", "cpu", "npu", "claude", "cli")
 
 @app.post("/claude/backend")
 async def set_agent_backend(payload: dict):

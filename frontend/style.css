@@ -20,12 +20,13 @@
   --turquoise: #3dffd0;
 
   /* ── Per-agent accent colors ── */
-  --a1: #e8b800;    /* AN  — gold         Engine Architect  */
-  --a2: #00aaff;    /* ENLIL — electric   The Renderer      */
-  --a3: #3dffd0;    /* ENKI — turquoise   DOM Bridge        */
-  --a4: #b44ff5;    /* ENZU — purple      The Sentinel      */
-  --cc: #e8b800;    /* console — gold                       */
-  --rv: #00d9f5;    /* render  — cyan                       */
+  --a1: #e8b800;    /* AN     — gold         App Architect     */
+  --a2: #00aaff;    /* ENLIL  — electric     The Renderer      */
+  --a3: #3dffd0;    /* ENKI   — turquoise    UI & Integration  */
+  --a4: #b44ff5;    /* ENZU   — purple       The Sentinel      */
+  --a5: #ff8c42;    /* NISABA — amber        Scribe/Librarian  */
+  --cc: #e8b800;    /* console — gold                          */
+  --rv: #00d9f5;    /* render  — cyan                          */
 
   /* ── Text ── */
   --text:      #8ab0cc;
@@ -69,13 +70,15 @@ body {
 /* ── Explicit cell placement (6-row grid) ── */
 .profile-block.a1  { grid-column: 1;          grid-row: 1;          z-index: 2; position: relative; }
 .cli-block.a1-cli  { grid-column: 1;          grid-row: 2 / span 2; z-index: 2; position: relative; }
-.top-console       { grid-column: 2 / span 3; grid-row: 1;          z-index: 2; position: relative; }
+.profile-block.a5  { grid-column: 2;          grid-row: 1;          z-index: 2; position: relative; }
+.cli-block.a5-cli  { grid-column: 3 / span 2; grid-row: 1;          z-index: 2; position: relative; }
 .profile-block.a2  { grid-column: 5;          grid-row: 1;          z-index: 2; position: relative; }
 .cli-block.a2-cli  { grid-column: 5;          grid-row: 2 / span 2; z-index: 2; position: relative; }
 .render-window     { grid-column: 2 / span 3; grid-row: 2 / span 4; z-index: 1; position: relative; }
 .cli-block.a3-cli  { grid-column: 1;          grid-row: 4 / span 2; z-index: 2; position: relative; }
 .profile-block.a3  { grid-column: 1;          grid-row: 6;          z-index: 2; position: relative; }
-.command-prompt    { grid-column: 2 / span 3; grid-row: 6;          z-index: 2; position: relative; }
+.console-pane      { grid-column: 2;          grid-row: 6;          z-index: 2; position: relative; }
+.command-prompt    { grid-column: 3 / span 2; grid-row: 6;          z-index: 2; position: relative; }
 .cli-block.a4-cli  { grid-column: 5;          grid-row: 4 / span 2; z-index: 2; position: relative; }
 .profile-block.a4  { grid-column: 5;          grid-row: 6;          z-index: 2; position: relative; }
 
@@ -84,12 +87,38 @@ body {
 ═══════════════════════════════════════════════════════ */
 .profile-block,
 .cli-block,
-.top-console,
 .render-window,
-.command-prompt {
+.command-prompt,
+.console-pane {
   background: var(--panel);
   border: 1px solid var(--cyan);
   overflow: hidden;
+}
+
+.console-pane {
+  display: flex;
+  flex-direction: column;
+  border-color: var(--gold);
+  box-shadow: inset 0 0 12px rgba(232,184,0,.08), 0 0 6px rgba(232,184,0,.2);
+}
+.console-header {
+  padding: 5px 10px 4px;
+  font-size: 11px;
+  color: var(--gold);
+  border-bottom: 1px solid rgba(232,184,0,.3);
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.console-pane .cli-output {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 11px;
+  padding: 4px 8px;
 }
 
 /* Per-agent border + glow */
@@ -109,9 +138,9 @@ body {
   border-color: var(--a4);
   box-shadow: inset 0 0 12px rgba(180,79,245,.08), 0 0 6px rgba(180,79,245,.2);
 }
-.top-console {
-  border-color: var(--gold);
-  box-shadow: inset 0 0 12px rgba(232,184,0,.1), 0 0 8px rgba(232,184,0,.25);
+.profile-block.a5, .cli-block.a5-cli {
+  border-color: var(--a5);
+  box-shadow: inset 0 0 12px rgba(255,140,66,.08), 0 0 6px rgba(255,140,66,.2);
 }
 .render-window {
   border-color: var(--cyan);
@@ -126,8 +155,7 @@ body {
 /* ═══════════════════════════════════════════════════════
    CUNEIFORM BORDER STRIP (decorative top edge)
 ═══════════════════════════════════════════════════════ */
-.profile-block::before,
-.top-console::before {
+.profile-block::before {
   content: '𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹𒀭𒁀𒈫𒌋𒁺𒆳𒄩𒁹';
   display: block;
   position: absolute;
@@ -174,6 +202,7 @@ body {
 .a2 .avatar { color: var(--a2); }
 .a3 .avatar { color: var(--a3); }
 .a4 .avatar { color: var(--a4); }
+.a5 .avatar { color: var(--a5); }
 
 .agent-meta {
   display: flex;
@@ -351,24 +380,6 @@ body {
 /* ═══════════════════════════════════════════════════════
    TOP CENTER CONSOLE
 ═══════════════════════════════════════════════════════ */
-.top-console {
-  display: flex;
-  flex-direction: column;
-}
-
-.tc-header {
-  padding: 7px 10px 5px;
-  font-size: 11px;
-  color: var(--gold);
-  border-bottom: 1px solid var(--gold);
-  background: rgba(0,0,0,.55);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  flex-shrink: 0;
-}
 .divider { color: var(--text-dim); }
 .loop-badge {
   margin-left: auto;
@@ -382,8 +393,15 @@ body {
   letter-spacing: 0.1em;
 }
 
-.tc-output { flex: 1; overflow-y: auto; }
-.tc-output .tok { color: var(--gold); }
+/* Nisaba mode indicator */
+.nisaba-mode-badge {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--a5);
+  opacity: 0.8;
+  margin-top: 2px;
+}
+.nisaba-mode-badge.scribe { color: #ffd080; }
 
 .line-log   { color: var(--text-hi)  !important; }
 .line-warn  { color: #ffb74d         !important; }
@@ -460,20 +478,17 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 10px 14px;
-  gap: 7px;
-}
-
-.prompt-label {
-  font-size: 11px;
-  color: var(--gold-dim);
-  letter-spacing: 0.18em;
+  padding: 0;
+  gap: 0;
+  border-color: var(--gold-dim);
+  background: var(--panel2);
 }
 
 #cmd-form {
+  padding: 4px 10px 6px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .cmd-row2 {
@@ -734,6 +749,24 @@ body {
 .cli-block.gpu-active {
   border-color: var(--gpu) !important;
   box-shadow: inset 0 0 12px rgba(232,184,0,.08), 0 0 8px rgba(232,184,0,.25) !important;
+}
+
+/* CPU — amber/orange (distinct from GPU gold) */
+.backend-badge.cpu {
+  border-color: #ff8c42;
+  color: #ff8c42;
+  background: rgba(255,140,66,.08);
+  box-shadow: 0 0 8px rgba(255,140,66,.35);
+  animation: cpu-glow 2s ease-in-out infinite;
+}
+@keyframes cpu-glow {
+  0%,100% { box-shadow: 0 0 6px rgba(255,140,66,.3); }
+  50%      { box-shadow: 0 0 14px rgba(255,140,66,.65); }
+}
+.profile-block.cpu-active,
+.cli-block.cpu-active {
+  border-color: #ff8c42 !important;
+  box-shadow: inset 0 0 12px rgba(255,140,66,.08), 0 0 8px rgba(255,140,66,.25) !important;
 }
 
 /* NPU — cyan */

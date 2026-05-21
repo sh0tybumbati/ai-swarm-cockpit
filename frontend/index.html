@@ -35,16 +35,27 @@
       <div class="cli-output" id="stream-agent1"></div>
     </div>
 
-    <!-- ══ TOP CENTER: System Console ══ -->
-    <div class="top-console">
-      <div class="tc-header">
-        <span>𒁹 <span id="project-name">NO PROJECT</span></span>
-        <span class="divider">│</span>
-        <span>🟢 <span id="host-url">localhost:3000</span></span>
-        <span class="divider">│</span>
-        <span class="loop-badge" id="loop-counter">LOOP: 0/12</span>
+    <!-- ══ AGENT 5: NISABA — Scribe (Top-Center-Left) ══ -->
+    <div class="profile-block a5" id="profile-agent5" onclick="openModal('agent5')">
+      <div class="avatar">📜</div>
+      <div class="agent-meta">
+        <div class="agent-id"><span class="cuneiform-glyph">𒀭𒇻</span> AGENT <span class="num">05</span></div>
+        <div class="agent-deity">NISABA</div>
+        <div class="agent-role">Scribe / Librarian</div>
+        <div class="agent-model" id="model-label-agent5">qwen3:4b-instruct <span class="model-dot" id="mdot-agent5" title="Model status">●</span></div>
+        <div class="backend-badge cpu-active" id="backend-badge-agent5" title="Inference backend">CPU</div>
+        <div class="agent-status-row">
+          <span class="led" id="led-agent5"></span>
+          <span class="led-label" id="status-agent5">IDLE</span>
+        </div>
+        <div class="nisaba-mode-badge" id="nisaba-mode">📖 LIBRARIAN</div>
+        <div class="config-hint">⚙ CONFIGURE</div>
       </div>
-      <div class="cli-output tc-output" id="stream-console"></div>
+    </div>
+
+    <div class="cli-block a5-cli">
+      <div class="cli-header">𒀭𒇻 AGT-05 ▸ NISABA — SCRIBE OF THE GODS<button class="fire-btn" onclick="fireAgent('agent5')" title="Query Nisaba">▶</button></div>
+      <div class="cli-output" id="stream-agent5"></div>
     </div>
 
     <!-- ══ AGENT 2: ENLIL — The Renderer (Top-Right) ══ -->
@@ -140,12 +151,21 @@
       </div>
     </div>
 
-    <!-- ══ BOTTOM CENTER: Command Prompt ══ -->
+    <!-- ══ BOTTOM CENTER-LEFT: System Console ══ -->
+    <div class="console-pane">
+      <div class="console-header">
+        <span>𒁹 <span id="project-name">NO PROJECT</span></span>
+        <span class="divider">│</span>
+        <span class="loop-badge" id="loop-counter">LOOP: 0/12</span>
+      </div>
+      <div class="cli-output" id="stream-console"></div>
+    </div>
+
+    <!-- ══ BOTTOM CENTER-RIGHT: Command Prompt ══ -->
     <div class="command-prompt">
-      <div class="prompt-label">𒀭 BROADCAST COMMAND TO SWARM 𒀭</div>
       <form id="cmd-form" onsubmit="sendCommand(event)">
         <input type="text" id="cmd-input"
-          placeholder="[YOU] : Enter feature request... (↑↓ history)"
+          placeholder="[YOU] : Broadcast to swarm... (↑↓ history)"
           autocomplete="off" />
         <div class="cmd-row2">
           <input type="text" id="project-input"
@@ -174,9 +194,22 @@
           <label>⚡ INFERENCE BACKEND</label>
           <div class="backend-toggle">
             <button id="btn-gpu"    class="backend-opt active" onclick="setBackend('gpu')">GPU — Ollama</button>
+            <button id="btn-cpu"    class="backend-opt"        onclick="setBackend('cpu')">CPU — Ollama</button>
             <button id="btn-npu"    class="backend-opt"        onclick="setBackend('npu')">NPU — FastFlowLM</button>
             <button id="btn-claude" class="backend-opt"        onclick="setBackend('claude')">☁ Claude API</button>
             <button id="btn-cli"    class="backend-opt"        onclick="setBackend('cli')">⬡ Claude CLI</button>
+          </div>
+          <!-- CPU Ollama config fields -->
+          <div id="cpu-config-fields" style="display:none; margin-top:8px; flex-direction:column; gap:6px;">
+            <div class="field">
+              <label>CPU OLLAMA HOST</label>
+              <input type="text" id="cpu-host-input" placeholder="http://localhost:11435" />
+            </div>
+            <div class="field">
+              <label>CPU MODEL</label>
+              <input type="text" id="cpu-model-input" placeholder="llama3.1:8b" />
+            </div>
+            <div id="cpu-status-line" class="npu-status"></div>
           </div>
           <!-- NPU config fields -->
           <div id="npu-config-fields" style="display:none; margin-top:8px; flex-direction:column; gap:6px;">

@@ -24,14 +24,15 @@ import tempfile
 
 from anthropic import AsyncAnthropic
 from fastapi import WebSocket
-from agents import AGENTS, NPU_CONFIG, CLAUDE_CONFIG, CLAUDE_CLI_CONFIG
+from agents import AGENTS, NPU_CONFIG, CPU_CONFIG, CLAUDE_CONFIG, CLAUDE_CLI_CONFIG
+import nisaba as _nisaba
 
 logger = logging.getLogger(__name__)
 
 OLLAMA_BASE    = "http://localhost:11434"
 MAX_ITERATIONS = 12
 OLLAMA_TIMEOUT = 180.0
-MAX_CTX_CHARS  = 2500
+MAX_CTX_CHARS  = 12000
 OUTPUT_BASE    = Path(__file__).parent.parent / "output"
 
 LANG_EXT: Dict[str, str] = {
@@ -49,6 +50,7 @@ AGENT_FILE_PREFIX = {
     "agent2": "renderer",
     "agent3": "integration",
     "agent4": "sentinel",
+    "agent5": "nisaba",
 }
 
 
@@ -246,8 +248,7 @@ class SwarmOrchestrator(ConnectionManager):
                 await self._active_task
             except asyncio.CancelledError:
                 pass
-        # Reset all agent statuses
-        for aid in ["agent1", "agent2", "agent3", "agent4"]:
+        for aid in ["agent1", "agent2", "agent3", "agent4", "agent5"]:
             await self.send_status(aid, "IDLE")
         await self.send_loop_state(False)
         await self.sys_log("[!] Loop aborted by user", "warn")
@@ -275,8 +276,10 @@ class SwarmOrchestrator(ConnectionManager):
     # ── Inference dispatch ─────────────────────────────────────────────────────
 
     async def _run_agent(self, agent_id: str, messages: list) -> str:
-        """Route to GPU (Ollama), NPU (FastFlowLM), Claude API, or Claude CLI."""
+        """Route to GPU/CPU (Ollama), NPU (FastFlowLM), Claude API, or Claude CLI."""
         backend = AGENTS[agent_id].get("backend", "gpu")
+        if backend == "cpu":
+            return await self._run_cpu(agent_id, messages)
         if backend == "npu":
             return await self._run_npu(agent_id, messages)
         if backend == "claude":
@@ -462,40 +465,75 @@ class SwarmOrchestrator(ConnectionManager):
 
         proc = None
         try:
+            import os as _os
+            env = _os.environ.copy()
+
+            # stream-json gives us JSONL token-by-token; --verbose is required for that mode
             proc = await asyncio.create_subprocess_exec(
                 resolved, "--print",
+                "--output-format", "stream-json",
+                "--verbose",
                 "--model", model,
                 "--input-format", "text",
                 stdin=open(tmp_path, "rb"),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
 
-            # Stream stdout in chunks
-            async def _read_stdout():
-                nonlocal output
+            await self.sys_log(f"[CLI] spawned pid={proc.pid} bin={resolved} model={model}")
+
+            stderr_chunks: list = []
+
+            async def _read_stderr():
                 while True:
-                    chunk = await proc.stdout.read(256)
+                    chunk = await proc.stderr.read(256)
                     if not chunk:
                         break
-                    text = chunk.decode("utf-8", errors="replace")
-                    output += text
-                    await self.send_token(agent_id, text)
+                    stderr_chunks.append(chunk)
+
+            async def _stream_jsonl():
+                nonlocal output
+                async for raw_line in proc.stdout:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    mtype = msg.get("type", "")
+                    if mtype == "assistant":
+                        # Extract text content blocks and relay as tokens
+                        for block in msg.get("message", {}).get("content", []):
+                            if block.get("type") == "text":
+                                text = block["text"]
+                                output += text
+                                await self.send_token(agent_id, text)
+                    elif mtype == "result":
+                        # Fallback: if we somehow got no text from assistant messages
+                        if not output:
+                            output = msg.get("result", "")
+                            if output:
+                                await self.send_token(agent_id, output)
 
             try:
-                await asyncio.wait_for(_read_stdout(), timeout=timeout)
+                await asyncio.wait_for(
+                    asyncio.gather(_stream_jsonl(), _read_stderr()),
+                    timeout=timeout,
+                )
             except asyncio.TimeoutError:
                 await self.send_token(agent_id, "\n[ERROR] Claude CLI timed out\n")
                 await self.sys_log(f"Claude CLI timed out after {timeout}s", "error")
 
             await proc.wait()
 
-            # Surface any stderr as a warning (CLI often prints status info there)
-            if proc.returncode != 0:
-                stderr_raw = await proc.stderr.read()
-                stderr_txt = stderr_raw.decode("utf-8", errors="replace").strip()
-                if stderr_txt:
-                    await self.sys_log(f"[CLI stderr] {stderr_txt[:200]}", "warn")
+            stderr_txt = b"".join(stderr_chunks).decode("utf-8", errors="replace").strip()
+            if stderr_txt:
+                level = "error" if proc.returncode != 0 else "warn"
+                await self.sys_log(f"[CLI stderr rc={proc.returncode}] {stderr_txt[:400]}", level)
+                if proc.returncode != 0:
+                    await self.send_token(agent_id, f"\n[CLI stderr] {stderr_txt[:400]}\n")
 
         except asyncio.CancelledError:
             if proc and proc.returncode is None:
@@ -571,6 +609,70 @@ class SwarmOrchestrator(ConnectionManager):
             await self.sys_log(msg, "error")
         except httpx.ReadTimeout:
             await self.send_token(agent_id, "\n[ERROR] Model timed out\n")
+        except Exception as exc:
+            await self.send_token(agent_id, f"\n[ERROR] {exc}\n")
+
+        await self._broadcast(agent_id, {"type": "tps", "value": 0})
+        await self.send_status(agent_id, "DONE")
+        await self.send_token(agent_id, "\n")
+        return output
+
+    # ── CPU streaming — second Ollama daemon (OLLAMA_NUM_GPU=0) ──────────────
+
+    async def _run_cpu(self, agent_id: str, messages: list) -> str:
+        agent      = AGENTS[agent_id]
+        cpu_host   = CPU_CONFIG["host"]
+        model      = agent["model"]
+        output     = ""
+        tok_count  = 0
+        start_time = time.monotonic()
+
+        await self.send_status(agent_id, "WORKING")
+        await self._broadcast(agent_id, {"type": "backend", "backend": "cpu"})
+        await self.sys_log(f"[{agent.get('deity', agent['name'])}] ▸ CPU: {model}")
+
+        payload = {
+            "model": model,
+            "messages": [{"role": "system", "content": agent["system"]}] + messages,
+            "stream": True,
+            "options": {"temperature": 0.25, "num_ctx": 4096},
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+                async with client.stream("POST", f"{cpu_host}/api/chat", json=payload) as resp:
+                    if resp.status_code != 200:
+                        err = f"CPU Ollama HTTP {resp.status_code}"
+                        await self.send_token(agent_id, f"\n[ERROR] {err}\n")
+                        await self.send_status(agent_id, "ERROR")
+                        return ""
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data  = json.loads(line)
+                            token = data.get("message", {}).get("content", "")
+                            if token:
+                                output    += token
+                                tok_count += 1
+                                await self.send_token(agent_id, token)
+                                if tok_count % 8 == 0:
+                                    elapsed = time.monotonic() - start_time
+                                    if elapsed > 0.05:
+                                        await self._broadcast(agent_id, {"type": "tps", "value": round(tok_count / elapsed, 1)})
+                            if data.get("done"):
+                                break
+                        except json.JSONDecodeError:
+                            continue
+        except asyncio.CancelledError:
+            await self.send_token(agent_id, "\n[ABORTED]\n")
+            raise
+        except httpx.ConnectError:
+            msg = f"Cannot reach CPU Ollama at {cpu_host} — start with: OLLAMA_HOST=127.0.0.1:11435 OLLAMA_NUM_GPU=0 ollama serve"
+            await self.send_token(agent_id, f"\n[ERROR] {msg}\n")
+            await self.sys_log(msg, "error")
+        except httpx.ReadTimeout:
+            await self.send_token(agent_id, "\n[ERROR] CPU model timed out\n")
         except Exception as exc:
             await self.send_token(agent_id, f"\n[ERROR] {exc}\n")
 
@@ -697,10 +799,31 @@ class SwarmOrchestrator(ConnectionManager):
             # Context prefix injected into Agent 1
             ctx_prefix = f"Project context from prior sessions:\n{prior_context}\n\n" if prior_context else ""
 
+            # ── Nisaba: Librarian query (before AN, iteration 1 only) ─────────
+            nisaba_ctx = ""
+            if iteration == 1:
+                try:
+                    await self.send_status("agent5", "WORKING")
+                    await self._broadcast("agent5", {"type": "mode", "mode": "librarian"})
+                    await self.send_token("agent5", f"📖 Query: {feature_request[:120]}\n")
+                    result = await _nisaba.librarian_query(
+                        project, feature_request,
+                        stream_cb=lambda t: self.send_token("agent5", t),
+                    )
+                    if result["citations"]:
+                        nisaba_ctx = f"\nNisaba retrieved context:\n{result['answer']}\nSources: {', '.join(result['citations'][:3])}\n\n"
+                        await self.send_token("agent5", f"\n└ Sources: {', '.join(result['citations'][:5])}\n")
+                    else:
+                        await self.send_token("agent5", "\n└ No prior context found.\n")
+                    await self.send_status("agent5", "IDLE")
+                except Exception as e:
+                    logger.warning("Nisaba librarian failed: %s", e)
+                    await self.send_status("agent5", "IDLE")
+
             # Deployment context always injected so AN knows where output lands
             deploy_note = (
                 "DEPLOYMENT TARGET: Output is previewed in a browser iframe. "
-                "Produce a single self-contained index.html (CSS in <style>, JS in <script>). "
+                "Produce a complete self-contained index.html (CSS in <style>, JS in <script>). "
                 "Do not use TypeScript, npm, or build tools unless explicitly requested.\n\n"
             )
 
@@ -713,7 +836,7 @@ class SwarmOrchestrator(ConnectionManager):
                     {"role": "user", "content": f"ENZU feedback: {feedback['agent1']}. Fix these issues."},
                 ]
             else:
-                a1_msgs = [{"role": "user", "content": deploy_note + ctx_prefix + feature_request}]
+                a1_msgs = [{"role": "user", "content": deploy_note + ctx_prefix + nisaba_ctx + feature_request}]
 
             resp1 = await self._run_agent("agent1", a1_msgs)
             last["agent1"] = all_out["agent1"] = resp1
@@ -735,47 +858,66 @@ class SwarmOrchestrator(ConnectionManager):
                 if deliverable["files"] else ""
             )
 
-            # ── ENLIL: Renderer ────────────────────────────────────────────────
-            resp2 = ""
-            if "agent2" in route:
-                a2_note = f"\nENZU feedback: {feedback['agent2']}" if feedback.get("agent2") else ""
-                resp2 = await self._run_agent("agent2", [
-                    {"role": "user",      "content": feature_request},
-                    {"role": "assistant", "content": f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS]}"},
-                    {"role": "user",      "content": f"AN has assigned you a task in the PLAN section above. Implement it now.{file_note}{a2_note}"},
-                ])
-                last["agent2"] = all_out["agent2"] = resp2
-                saved = save_agent_output(project, "agent2", iteration, resp2)
-                all_saved.extend(f["file"] for f in saved)
-                if saved: await self.notify_files(saved)
-            else:
-                await self.sys_log(f"[ENLIL] Skipped — no rendering work this iteration", "info")
-                await self.send_status("agent2", "IDLE")
+            # Read the HTML file AN saved — base for both ENLIL and ENKI
+            proj_dir = OUTPUT_BASE / _safe_name(project)
+            an_html  = ""
+            for s in saved:
+                if s["file"].endswith(".html"):
+                    fp = proj_dir / s["file"]
+                    if fp.exists():
+                        an_html = fp.read_text(encoding="utf-8")
+                        break
+            if not an_html:
+                an_html = resp1
 
-            # ── ENKI: UI & Integration ────────────────────────────────────────
-            resp3 = ""
-            if "agent3" in route:
+            # ── ENLIL + ENKI: run in parallel, both from AN's base ────────────
+            resp2, resp3 = "", ""
+            run2 = "agent2" in route
+            run3 = "agent3" in route
+
+            async def _run_enlil():
+                nonlocal resp2
+                if not run2:
+                    await self.sys_log("[ENLIL] Skipped", "info")
+                    await self.send_status("agent2", "IDLE")
+                    return
+                a2_note = f"\nENZU feedback: {feedback['agent2']}" if feedback.get("agent2") else ""
+                resp2 = await self._run_agent("agent2", [{"role": "user", "content": (
+                    f"Task: {feature_request}\n\n"
+                    f"AN's implementation:\n```html\n{an_html}\n```\n\n"
+                    f"Rewrite with dramatically better visual design. "
+                    f"Preserve ALL JS logic and DOM element IDs exactly — only improve CSS and layout. "
+                    f"Output the complete index.html.{a2_note}"
+                )}])
+
+            async def _run_enki():
+                nonlocal resp3
+                if not run3:
+                    await self.sys_log("[ENKI] Skipped", "info")
+                    await self.send_status("agent3", "IDLE")
+                    return
                 a3_note = f"\nENZU feedback: {feedback['agent3']}" if feedback.get("agent3") else ""
-                resp3 = await self._run_agent("agent3", [
-                    {"role": "user",      "content": feature_request},
-                    {"role": "assistant", "content": (
-                        f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS // 2]}\n\n"
-                        f"ENLIL's rendering implementation:\n{resp2[:MAX_CTX_CHARS // 2]}" if resp2
-                        else f"AN's architectural plan and implementation:\n{resp1[:MAX_CTX_CHARS]}"
-                    )},
-                    {"role": "user", "content": (
-                        ("AN has assigned you a task in the PLAN section above. Implement it now"
-                         + (", integrating with ENLIL's work" if resp2 else "") + "."
-                         + file_note + a3_note)
-                    )},
-                ])
+                resp3 = await self._run_agent("agent3", [{"role": "user", "content": (
+                    f"Task: {feature_request}\n\n"
+                    f"AN's implementation:\n```html\n{an_html}\n```\n\n"
+                    f"Fix all bugs and UX gaps: missing win/lose conditions, broken events, "
+                    f"missing restart button, score display. "
+                    f"Output the complete, fully working index.html.{a3_note}"
+                )}])
+
+            await asyncio.gather(_run_enlil(), _run_enki())
+
+            if resp2:
+                last["agent2"] = all_out["agent2"] = resp2
+                saved2 = save_agent_output(project, "agent2", iteration, resp2)
+                all_saved.extend(f["file"] for f in saved2)
+                if saved2: await self.notify_files(saved2)
+            if resp3:
                 last["agent3"] = all_out["agent3"] = resp3
-                saved = save_agent_output(project, "agent3", iteration, resp3)
-                all_saved.extend(f["file"] for f in saved)
-                if saved: await self.notify_files(saved)
-            else:
-                await self.sys_log(f"[ENKI] Skipped — no integration work this iteration", "info")
-                await self.send_status("agent3", "IDLE")
+                # ENKI is the integrator — save last so it wins any filename collision
+                saved3 = save_agent_output(project, "agent3", iteration, resp3)
+                all_saved.extend(f["file"] for f in saved3)
+                if saved3: await self.notify_files(saved3)
 
             # ── ENZU: Sentinel ─────────────────────────────────────────────────
             sections = [f"Feature: {feature_request}\n\n=== AN ({AGENTS['agent1']['name']}) ===\n{resp1[:MAX_CTX_CHARS]}"]
@@ -806,6 +948,37 @@ class SwarmOrchestrator(ConnectionManager):
                 for aid in ["agent1", "agent2", "agent3", "agent4"]:
                     await self.send_status(aid, "IDLE")
                 await self.send_loop_state(False)
+
+                # ── Nisaba: Scribe mode (background, non-blocking) ────────────
+                async def _nisaba_scribe():
+                    try:
+                        await self.send_status("agent5", "WORKING")
+                        await self._broadcast("agent5", {"type": "mode", "mode": "scribe"})
+                        await self.send_token("agent5", f"\n✍️  Scribing: {feature_request[:80]}\n")
+                        result = await _nisaba.scribe(
+                            project, feature_request, all_out,
+                            list(dict.fromkeys(all_saved)),
+                            stream_cb=lambda t: self.send_token("agent5", t),
+                        )
+                        await self.send_token("agent5",
+                            f"\n└ Commit: {result.get('commit','')}\n"
+                            f"└ Tags: {', '.join(result.get('tags',[]))}\n"
+                        )
+                        # Index generated output files for future librarian queries
+                        proj_dir = OUTPUT_BASE / _safe_name(project)
+                        file_records = [
+                            {"name": fn, "path": str(proj_dir / fn)}
+                            for fn in dict.fromkeys(all_saved) if (proj_dir / fn).exists()
+                        ]
+                        indexed = await _nisaba.index_files(project, file_records)
+                        if indexed:
+                            await self.send_token("agent5", f"└ Indexed {indexed} chunks\n")
+                    except Exception as e:
+                        logger.warning("Nisaba scribe failed: %s", e)
+                    finally:
+                        await self.send_status("agent5", "IDLE")
+
+                asyncio.create_task(_nisaba_scribe())
                 return
 
             route_to = verdict.get("route_to", "agent1")
@@ -819,7 +992,7 @@ class SwarmOrchestrator(ConnectionManager):
         save_context(project, feature_request, max_iterations, all_out,
                      "circuit_breaker", list(dict.fromkeys(all_saved)))
         await self.sys_log(f"[!] CIRCUIT BREAKER — {max_iterations} iterations. Context saved.", "error")
-        for aid in ["agent1", "agent2", "agent3", "agent4"]:
+        for aid in ["agent1", "agent2", "agent3", "agent4", "agent5"]:
             await self.send_status(aid, "IDLE")
         await self.send_loop_state(False)
 
@@ -828,6 +1001,6 @@ class SwarmOrchestrator(ConnectionManager):
             await self._swarm_loop_inner(feature_request, project, max_iterations)
         except asyncio.CancelledError:
             await self.sys_log("[!] Swarm loop cancelled", "warn")
-            for aid in ["agent1", "agent2", "agent3", "agent4"]:
+            for aid in ["agent1", "agent2", "agent3", "agent4", "agent5"]:
                 await self.send_status(aid, "IDLE")
             await self.send_loop_state(False)

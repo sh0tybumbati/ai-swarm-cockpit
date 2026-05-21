@@ -4,7 +4,7 @@
 
 const WS_BASE  = `ws://${location.host}`;
 const API_BASE = `http://${location.host}`;
-const CHANNELS = ['agent1', 'agent2', 'agent3', 'agent4', 'console'];
+const CHANNELS = ['agent1', 'agent2', 'agent3', 'agent4', 'agent5', 'console'];
 
 const sockets = {};
 let currentModalAgent = null;
@@ -81,9 +81,24 @@ function handleMsg(channel, msg) {
     case 'tps':
       updateTps(channel, msg.value ?? 0);
       break;
+    case 'mode':
+      if (channel === 'agent5') updateNisabaMode(msg.mode);
+      break;
     case 'ping':
       sockets[channel]?.send('pong');
       break;
+  }
+}
+
+function updateNisabaMode(mode) {
+  const badge = document.getElementById('nisaba-mode');
+  if (!badge) return;
+  if (mode === 'scribe') {
+    badge.textContent = '✍️  SCRIBE';
+    badge.className   = 'nisaba-mode-badge scribe';
+  } else {
+    badge.textContent = '📖 LIBRARIAN';
+    badge.className   = 'nisaba-mode-badge';
   }
 }
 
@@ -226,7 +241,6 @@ function loadPreview() {
   const url = document.getElementById('preview-url-input').value.trim();
   if (!url) return;
   document.getElementById('preview-frame').src = url;
-  try { document.getElementById('host-url').textContent = new URL(url).host; } catch {}
 }
 
 document.getElementById('preview-frame').addEventListener('load', function () {
@@ -289,7 +303,7 @@ async function sendCommand(event) {
   historyIdx = -1;
 
   document.getElementById('cmd-input').value = '';
-  CHANNELS.filter(c => c !== 'console').forEach(clearStream);
+  CHANNELS.filter(c => c !== 'console' && c !== 'agent5').forEach(clearStream);
   savedFilesCount = 0;
   document.getElementById('files-badge').style.display = 'none';
   currentProject = project;
@@ -361,7 +375,7 @@ document.getElementById('cmd-input').addEventListener('keydown', (e) => {
 // ── Model status indicators ────────────────────────────
 
 async function checkModelStatus() {
-  const agents   = ['agent1', 'agent2', 'agent3', 'agent4'];
+  const agents   = ['agent1', 'agent2', 'agent3', 'agent4', 'agent5'];
   const dotEls   = agents.map(id => document.getElementById(`mdot-${id}`));
 
   try {
@@ -418,9 +432,9 @@ async function checkModelStatus() {
 
 // ── Backend badge controls (any agent) ────────────────
 
-const CLI_SUFFIX = { agent1: 'a1-cli', agent2: 'a2-cli', agent3: 'a3-cli', agent4: 'a4-cli' };
+const CLI_SUFFIX = { agent1: 'a1-cli', agent2: 'a2-cli', agent3: 'a3-cli', agent4: 'a4-cli', agent5: 'a5-cli' };
 
-const BACKEND_LABELS = { gpu: 'GPU', npu: 'NPU', claude: 'API', cli: 'CLI' };
+const BACKEND_LABELS = { gpu: 'GPU', cpu: 'CPU', npu: 'NPU', claude: 'API', cli: 'CLI' };
 
 function updateBackendBadge(agentId, backend) {
   agentBackends[agentId] = backend;
@@ -430,15 +444,18 @@ function updateBackendBadge(agentId, backend) {
   if (!badge) return;
   badge.textContent = BACKEND_LABELS[backend] || backend.toUpperCase();
   const isGpu    = backend === 'gpu';
+  const isCpu    = backend === 'cpu';
   const isNpu    = backend === 'npu';
   const isClaude = backend === 'claude';
   const isCli    = backend === 'cli';
-  badge.className   = `backend-badge${isNpu ? ' npu' : isClaude ? ' claude' : isCli ? ' cli' : ''}`;
+  badge.className   = `backend-badge${isCpu ? ' cpu' : isNpu ? ' npu' : isClaude ? ' claude' : isCli ? ' cli' : ''}`;
   prof?.classList.toggle('gpu-active',    isGpu);
+  prof?.classList.toggle('cpu-active',    isCpu);
   prof?.classList.toggle('npu-active',    isNpu);
   prof?.classList.toggle('claude-active', isClaude);
   prof?.classList.toggle('cli-active',    isCli);
   cliEl?.classList.toggle('gpu-active',   isGpu);
+  cliEl?.classList.toggle('cpu-active',   isCpu);
   cliEl?.classList.toggle('npu-active',   isNpu);
   cliEl?.classList.toggle('claude-active',isClaude);
   cliEl?.classList.toggle('cli-active',   isCli);
@@ -446,16 +463,38 @@ function updateBackendBadge(agentId, backend) {
 
 function setBackend(backend) {
   modalBackend = backend;
-  ['gpu', 'npu', 'claude', 'cli'].forEach(b => {
+  ['gpu', 'cpu', 'npu', 'claude', 'cli'].forEach(b => {
     document.getElementById(`btn-${b}`)?.classList.toggle('active', backend === b);
   });
   document.getElementById('gpu-config-fields').style.display    = backend === 'gpu'    ? 'flex' : 'none';
+  document.getElementById('cpu-config-fields').style.display    = backend === 'cpu'    ? 'flex' : 'none';
   document.getElementById('npu-config-fields').style.display    = backend === 'npu'    ? 'flex' : 'none';
   document.getElementById('claude-config-fields').style.display = backend === 'claude' ? 'flex' : 'none';
   document.getElementById('cli-config-fields').style.display    = backend === 'cli'    ? 'flex' : 'none';
+  if (backend === 'cpu')    checkCpuHealth();
   if (backend === 'npu')    checkNpuHealth();
   if (backend === 'claude') checkClaudeHealth();
   if (backend === 'cli')    checkCliHealth();
+}
+
+async function checkCpuHealth() {
+  const statusEl = document.getElementById('cpu-status-line');
+  statusEl.textContent = 'Checking CPU Ollama…';
+  statusEl.className   = 'npu-status';
+  try {
+    const res  = await fetch(`${API_BASE}/cpu/health`);
+    const data = await res.json();
+    if (data.online) {
+      statusEl.textContent = `● ONLINE — ${data.models?.slice(0,3).join(', ') || 'models loaded'}`;
+      statusEl.className   = 'npu-status online';
+    } else {
+      statusEl.textContent = `○ OFFLINE — ${data.error || 'start: OLLAMA_HOST=127.0.0.1:11435 OLLAMA_NUM_GPU=0 ollama serve'}`;
+      statusEl.className   = 'npu-status offline';
+    }
+  } catch {
+    statusEl.textContent = '○ CPU Ollama unreachable';
+    statusEl.className   = 'npu-status offline';
+  }
 }
 
 async function checkNpuHealth() {
@@ -522,7 +561,7 @@ async function checkCliHealth() {
 
 async function openModal(agentId) {
   currentModalAgent = agentId;
-  const names = { agent1: 'AN', agent2: 'ENLIL', agent3: 'ENKI', agent4: 'ENZU' };
+  const names = { agent1: 'AN', agent2: 'ENLIL', agent3: 'ENKI', agent4: 'ENZU', agent5: 'NISABA' };
   document.getElementById('modal-title').textContent = `⚙ CONFIGURE ${names[agentId] || agentId}`;
   document.getElementById('modal-overlay').classList.add('open');
 
@@ -532,6 +571,14 @@ async function openModal(agentId) {
     const agentData = await agentRes.json();
     modalBackend = agentData[agentId]?.backend || 'gpu';
   } catch { modalBackend = 'gpu'; }
+
+  // Load CPU Ollama config
+  try {
+    const res  = await fetch(`${API_BASE}/cpu/config`);
+    const data = await res.json();
+    document.getElementById('cpu-host-input').value  = data.host  || 'http://localhost:11435';
+    document.getElementById('cpu-model-input').value = data.model || 'llama3.1:8b';
+  } catch { /* use defaults */ }
 
   // Load NPU config (for NPU fields)
   try {
@@ -596,6 +643,19 @@ async function applyAgentConfig() {
               .childNodes[0].textContent = model + ' ';
     }
 
+    // Save CPU Ollama config if CPU is selected
+    if (modalBackend === 'cpu') {
+      const cpuHost  = document.getElementById('cpu-host-input').value.trim();
+      const cpuModel = document.getElementById('cpu-model-input').value.trim();
+      if (cpuHost || cpuModel) {
+        await fetch(`${API_BASE}/cpu/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host: cpuHost, model: cpuModel })
+        });
+      }
+    }
+
     // Save NPU config if NPU is selected
     if (modalBackend === 'npu') {
       const npuHost  = document.getElementById('npu-host-input').value.trim();
@@ -656,6 +716,8 @@ async function applyAgentConfig() {
       let labelText = '';
       if (modalBackend === 'gpu') {
         labelText = model || labelEl.childNodes[0]?.textContent?.trim() || '';
+      } else if (modalBackend === 'cpu') {
+        labelText = document.getElementById('cpu-model-input').value.trim() || 'llama3.1:8b';
       } else if (modalBackend === 'npu') {
         labelText = document.getElementById('npu-model-input').value.trim() || 'llama3.2';
       } else if (modalBackend === 'claude') {
@@ -667,7 +729,7 @@ async function applyAgentConfig() {
       if (labelText) labelEl.childNodes[0].textContent = labelText + ' ';
     }
 
-    const names = { agent1: 'AN', agent2: 'ENLIL', agent3: 'ENKI', agent4: 'ENZU' };
+    const names = { agent1: 'AN', agent2: 'ENLIL', agent3: 'ENKI', agent4: 'ENZU', agent5: 'NISABA' };
     sysLog(`[CFG] ${names[agentId] || agentId} backend → ${modalBackend.toUpperCase()}`);
 
     await checkModelStatus();
@@ -750,8 +812,8 @@ document.addEventListener('keydown', (e) => {
 // ── Init ───────────────────────────────────────────────
 
 CHANNELS.forEach(ch => { sockets[ch] = connect(ch); });
-sysLog('Panoptic AI Swarm Cockpit v1.2 — ONLINE');
-sysLog('𒀭 AN  𒂗𒍪 ENLIL  𒂗𒆳 ENKI  𒂗𒍪 ENZU — standing by');
+sysLog('Panoptic AI Swarm Cockpit v1.3 — ONLINE');
+sysLog('𒀭 AN  𒂗𒍪 ENLIL  𒂗𒆳 ENKI  𒂗𒍪 ENZU  𒀭𒇻 NISABA — standing by');
 
 // Check model availability on load, then every 60s
 checkModelStatus();

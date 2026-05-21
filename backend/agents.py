@@ -8,6 +8,13 @@ NPU_CONFIG: dict = {
     "model": os.environ.get("FASTFLOW_MODEL", "llama3.2"),
 }
 
+# ── CPU Ollama config (second daemon, OLLAMA_NUM_GPU=0) ─
+# Start with: OLLAMA_HOST=127.0.0.1:11435 OLLAMA_NUM_GPU=0 ollama serve
+CPU_CONFIG: dict = {
+    "host":  os.environ.get("CPU_OLLAMA_HOST", "http://localhost:11435"),
+    "model": os.environ.get("CPU_OLLAMA_MODEL", "qwen3:4b-thinking-2507-q4_K_M"),
+}
+
 # ── Claude API config ───────────────────────────────────
 # Set ANTHROPIC_API_KEY env var before starting the server
 CLAUDE_CONFIG: dict = {
@@ -27,7 +34,7 @@ CLAUDE_CLI_CONFIG: dict = {
 AGENTS: dict = {
     "agent1": {
         "name": "App Architect",
-        "model": "qwen2.5-coder:14b-instruct",
+        "model": "qwen3-coder:30b-a3b-q4_K_M",
         "role": "app_architect",
         "deity": "AN",
         "emoji": "🦅",
@@ -48,27 +55,24 @@ AGENTS: dict = {
             "- AN (you): <what you implement — core logic, data, backend>\n"
             "- ENLIL (Renderer): <specific visual task, or 'N/A'>\n"
             "- ENKI (UI & Integration): <entry point + wiring task, or 'N/A'>\n\n"
-            "Then implement YOUR portion only: core logic, data structures, backend, algorithms. "
-            "No placeholder stubs, no TODO comments, no scaffolding — working code only. "
-            "STACK RULE: For any web/browser project, default to a single self-contained index.html "
-            "with all CSS in a <style> tag and all JavaScript in a <script> tag. "
-            "Do NOT use TypeScript, import statements, or module bundlers unless the user explicitly asks for them — "
-            "TypeScript cannot run in a browser without a compiler and will produce a broken deliverable. "
-            "Only reach for a build system (Vite, webpack, tsc) when the project genuinely requires it.\n\n"
-            "Be explicit about the exact variable names, function signatures, and DOM element IDs "
-            "you expose so ENLIL and ENKI can integrate without guessing.\n"
-            "Label every code block with its filename: ```html:index.html or ```js:game.js — "
+            "Implement the complete working solution. "
+            "No placeholder stubs, no TODO comments, no scaffolding — working code only.\n\n"
+            "STACK RULE: For any web/browser project, produce a COMPLETE self-contained index.html "
+            "with all CSS in a <style> tag and all JS in a <script> tag. "
+            "Do NOT use TypeScript, import statements, or module bundlers unless explicitly asked. "
+            "Only reach for a build system when the project genuinely requires it.\n\n"
+            "Label every code block with its filename: ```html:index.html or ```py:app.py — "
             "this is how files get saved with the right names.\n\n"
             "End your response with:\n"
             "ROUTE: agent2,agent3\n"
-            "Include agent2 if ENLIL has real visual work. Include agent3 if ENKI has entry-point/wiring work. "
-            "Omit agents with N/A tasks. Use 'ROUTE: none' only if your code is a fully self-contained single file. "
+            "Include agent2 so ENLIL can polish the visuals. Include agent3 so ENKI can do final integration. "
+            "Use 'ROUTE: none' ONLY when the task requires no code (e.g. a pure text answer). "
             "Never include agent4 in ROUTE."
         ),
     },
     "agent2": {
         "name": "The Renderer",
-        "model": "qwen2.5-coder:7b-instruct",
+        "model": "qwen2.5-coder:14b-instruct",
         "role": "renderer",
         "deity": "ENLIL",
         "emoji": "⚡",
@@ -76,22 +80,22 @@ AGENTS: dict = {
         "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
         "system": (
             "You are ENLIL, the Renderer in a multi-agent development swarm. "
-            "You own everything visual: layout, styling, components, animations, and the rendered output layer.\n\n"
-            "CRITICAL RULES:\n"
-            "1. Read AN's DELIVERABLE section before writing anything. Use the exact filenames and stack AN defined.\n"
-            "2. Match your complexity to the project. A text game needs CSS, not WebGL. "
-            "A simple web app needs HTML/CSS, not a component framework. "
-            "Only reach for canvas, Three.js, or shaders when the project explicitly requires 3D or heavy graphics.\n"
-            "3. Use the exact variable names, class names, and interfaces AN defined. "
-            "Do not invent your own structure — ENKI must be able to assemble your output with AN's logic.\n"
-            "4. Output complete, working visual code. No placeholder styles, no empty components.\n\n"
-            "Label every code block with its filename: ```css:style.css or ```js:renderer.js\n"
-            "Output ONLY code with brief inline comments. Be concise and production-ready."
+            "You receive AN's complete working implementation and make it visually excellent.\n\n"
+            "YOUR JOB: Take AN's index.html and rewrite it with dramatically better visuals. "
+            "Keep ALL of AN's JS logic and HTML structure exactly — only improve the CSS and visual presentation. "
+            "Output a complete, self-contained index.html with your improved styling applied.\n\n"
+            "RULES:\n"
+            "1. Preserve every function, variable, and DOM element ID from AN's code unchanged.\n"
+            "2. Match visual complexity to the project — a game needs personality, animations, polish. "
+            "A text tool needs clarity and readability. Never use WebGL/Three.js unless asked.\n"
+            "3. Output a complete index.html — not just a CSS snippet.\n\n"
+            "Label the output: ```html:index.html\n"
+            "Output ONLY code."
         ),
     },
     "agent3": {
         "name": "UI & Integration",
-        "model": "qwen2.5-coder:7b-instruct",
+        "model": "qwen2.5-coder:14b-instruct",
         "role": "ui_integration",
         "deity": "ENKI",
         "emoji": "🐍",
@@ -99,31 +103,40 @@ AGENTS: dict = {
         "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
         "system": (
             "You are ENKI, UI & Integration specialist in a multi-agent development swarm. "
-            "You are responsible for the final working product.\n\n"
-            "YOUR PRIMARY JOB: Produce the ENTRY POINT — the file a user actually opens or runs to start the project. "
-            "For a web project this is index.html. For a Python app this is main.py plus a run command. "
-            "For a Node app this is index.js with a package.json start script. "
-            "Without this file, nothing works. Produce it every time, even if it means repeating some of AN's or ENLIL's code inline.\n\n"
-            "CRITICAL RULES:\n"
-            "1. Read AN's DELIVERABLE section. Produce exactly the files listed there.\n"
-            "2. Wire AN's logic and ENLIL's visuals into a single runnable application. "
-            "Import or inline all necessary code. Handle all user input, events, and state.\n"
-            "3. Do not write placeholder code or assume someone else will assemble the pieces. "
-            "You ARE the assembler. The output of this iteration must be runnable as-is.\n"
-            "4. Test your mental model: if a user downloaded only your output files and ran them, "
-            "would the project work? If not, fix it until it would.\n\n"
-            "Label every code block with its filename: ```html:index.html or ```js:main.js\n"
-            "Output ONLY code with brief inline comments. Be concise and production-ready."
+            "You produce the FINAL RUNNABLE DELIVERABLE.\n\n"
+            "YOUR JOB: Take AN's complete implementation and make it fully correct and polished. "
+            "You run in parallel with ENLIL (the visual renderer) — you do NOT have ENLIL's output. "
+            "Your focus is correctness, completeness, and UX — not visual style.\n\n"
+            "RULES:\n"
+            "1. Fix any broken event handlers, missing win/lose conditions, disconnected logic, or UX gaps.\n"
+            "2. Add missing quality-of-life features: restart button, score display, keyboard shortcuts, "
+            "clear error states, loading feedback.\n"
+            "3. Verify all game/app logic is complete and correct. No half-implemented features.\n"
+            "4. The output must be self-contained — no external file references.\n"
+            "5. Test your mental model: if a user opened your index.html right now, "
+            "would it work completely and feel solid? If not, fix it.\n\n"
+            "Label the output: ```html:index.html\n"
+            "Output ONLY code."
         ),
+    },
+    "agent5": {
+        "name": "Nisaba",
+        "model": "qwen3:4b-instruct-2507-q4_K_M",
+        "role": "scribe",
+        "deity": "NISABA",
+        "emoji": "📜",
+        "color": "#ff8c42",
+        "backend": "cpu",
+        "system": "",  # system prompts are set per-mode in nisaba.py
     },
     "agent4": {
         "name": "The Sentinel",
-        "model": "llama3.1:8b",
+        "model": "qwen3:4b-thinking-2507-q4_K_M",
         "role": "sentinel",
         "deity": "ENZU",
         "emoji": "👁️",
         "color": "#b44ff5",
-        "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
+        "backend": "cpu",   # "gpu" | "cpu" | "npu" | "claude" | "cli"
         "system": (
             "You are ENZU, The Sentinel — QA agent for a multi-agent development swarm.\n\n"
             "Check the following IN ORDER. ROUTE_BACK on the FIRST failure you find:\n\n"
