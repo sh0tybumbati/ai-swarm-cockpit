@@ -1058,6 +1058,16 @@ class SwarmOrchestrator(ConnectionManager):
             )
 
             if verdict_str == "complete":
+                # Warn about any injections that arrived too late to be picked up
+                leftover = []
+                while not self._inject_queue.empty():
+                    leftover.append(self._inject_queue.get_nowait())
+                if leftover:
+                    await self.sys_log(
+                        f"[INJECT] Loop already completed — {len(leftover)} injection(s) not applied. "
+                        "Start a new run to use them.", "warn"
+                    )
+
                 save_session_log(project, feature_request, iteration, all_out)
                 save_context(project, feature_request, iteration, all_out,
                              "complete", list(dict.fromkeys(all_saved)))
