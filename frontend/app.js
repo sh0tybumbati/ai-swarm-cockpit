@@ -214,7 +214,10 @@ function setLoopRunning(running) {
   loopRunning = running;
   const sendBtn = document.getElementById('send-btn');
   const stopBtn = document.getElementById('stop-btn');
-  sendBtn.disabled    = running;
+  sendBtn.disabled = false;   // always enabled — inject while running, submit when idle
+  if (!awaitingReply) {
+    sendBtn.textContent = running ? '⚡ INJECT' : '▶ SUBMIT';
+  }
   stopBtn.style.display = running ? 'inline-block' : 'none';
 }
 
@@ -248,7 +251,7 @@ function exitReplyMode() {
   const btn   = document.getElementById('send-btn');
   input.placeholder = '[YOU] : Broadcast to swarm... (↑↓ history)';
   input.classList.remove('reply-active');
-  btn.textContent = '▶ SUBMIT';
+  btn.textContent = loopRunning ? '⚡ INJECT' : '▶ SUBMIT';
 }
 
 async function sendReply() {
@@ -373,10 +376,26 @@ async function sendCommand(event) {
     return;
   }
 
-  const prompt     = document.getElementById('cmd-input').value.trim();
-  const project    = document.getElementById('project-input').value.trim() || currentProject;
-  const maxLoops   = parseInt(document.getElementById('max-loops-input').value) || 6;
-  if (!prompt || loopRunning) return;
+  const prompt   = document.getElementById('cmd-input').value.trim();
+  const project  = document.getElementById('project-input').value.trim() || currentProject;
+  const maxLoops = parseInt(document.getElementById('max-loops-input').value) || 6;
+  if (!prompt) return;
+
+  // If a loop is running, inject the message rather than starting a new run
+  if (loopRunning) {
+    document.getElementById('cmd-input').value = '';
+    sysLog(`[⚡ INJECT] "${prompt}"`, 'warn');
+    try {
+      await fetch(`${API_BASE}/inject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: prompt }),
+      });
+    } catch (err) {
+      sysLog(`[INJECT] Error: ${err.message}`, 'error');
+    }
+    return;
+  }
 
   // Save to history
   if (prompt !== cmdHistory[cmdHistory.length - 1]) {

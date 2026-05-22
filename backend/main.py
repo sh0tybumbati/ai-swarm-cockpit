@@ -157,6 +157,16 @@ async def user_reply(payload: dict):
     return {"status": "reply received"}
 
 
+@app.post("/inject")
+async def user_inject(payload: dict):
+    """Queue a user message to be injected into AN's context at the next iteration."""
+    message = (payload.get("message") or "").strip()
+    if not message:
+        return JSONResponse({"error": "message is required"}, status_code=400)
+    await orchestrator._inject_queue.put(message)
+    return {"status": "queued", "message": message}
+
+
 # ── Agent config & solo run ────────────────────────────────────────────────────
 
 @app.get("/agents")

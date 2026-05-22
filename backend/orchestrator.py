@@ -238,7 +238,8 @@ class SwarmOrchestrator(ConnectionManager):
     def __init__(self):
         super().__init__()
         self._active_task: Optional[asyncio.Task] = None
-        self._reply_queue: asyncio.Queue = asyncio.Queue()
+        self._reply_queue:  asyncio.Queue = asyncio.Queue()
+        self._inject_queue: asyncio.Queue = asyncio.Queue()
 
     # ── Stop ──────────────────────────────────────────────────────────────────
 
@@ -253,6 +254,9 @@ class SwarmOrchestrator(ConnectionManager):
         while not self._reply_queue.empty():
             self._reply_queue.get_nowait()
         self._reply_queue.put_nowait("__CANCELLED__")
+        # Drain any pending user injections
+        while not self._inject_queue.empty():
+            self._inject_queue.get_nowait()
         for aid in ["agent1", "agent2", "agent3", "agent4", "agent5"]:
             await self.send_status(aid, "IDLE")
         await self.send_loop_state(False)
@@ -888,6 +892,22 @@ class SwarmOrchestrator(ConnectionManager):
             # Which agent did ENZU target? Controls which earlier agents we skip.
             reroute_to = next(iter(feedback), None)  # "agent1", "agent2", "agent3", or None
 
+            # ── User injections — drain queue, prepend to AN's context ────────
+            inject_ctx = ""
+            injections: List[str] = []
+            while not self._inject_queue.empty():
+                injections.append(self._inject_queue.get_nowait())
+            if injections:
+                inject_ctx = (
+                    "User interjection (take this into account):\n"
+                    + "\n".join(f"- {m}" for m in injections)
+                    + "\n\n"
+                )
+                await self.sys_log(
+                    f"[INJECT] {len(injections)} message(s) → AN: "
+                    + " | ".join(injections), "warn"
+                )
+
             # ── AN: App Architect ─────────────────────────────────────────────
             proj_dir = OUTPUT_BASE / _safe_name(project)
 
@@ -902,7 +922,7 @@ class SwarmOrchestrator(ConnectionManager):
                     a1_msgs = [
                         {"role": "user", "content": deploy_note + ctx_prefix + feature_request},
                         {"role": "assistant", "content": last["agent1"][-MAX_CTX_CHARS:]},
-                        {"role": "user", "content": f"ENZU feedback: {feedback['agent1']}. Fix these issues."},
+                        {"role": "user", "content": inject_ctx + f"ENZU feedback: {feedback['agent1']}. Fix these issues."},
                     ]
                 else:
                     # On the first iteration, prepend a project snapshot so AN can
@@ -917,7 +937,7 @@ class SwarmOrchestrator(ConnectionManager):
                                 "clarifying question, output `CLARIFY: <question>`. "
                                 "Otherwise proceed directly to implementation.\n\n"
                             )
-                    a1_msgs = [{"role": "user", "content": deploy_note + ctx_prefix + nisaba_ctx + preflight_block + feature_request}]
+                    a1_msgs = [{"role": "user", "content": deploy_note + ctx_prefix + nisaba_ctx + preflight_block + inject_ctx + feature_request}]
 
                 resp1 = await self._run_with_clarify("agent1", a1_msgs)
                 last["agent1"] = all_out["agent1"] = resp1
