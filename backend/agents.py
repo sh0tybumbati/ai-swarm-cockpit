@@ -40,6 +40,7 @@ AGENTS: dict = {
         "emoji": "🦅",
         "color": "#e8b800",
         "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
+        "num_ctx": 32768,   # largest — generates full apps with thinking tokens
         "system": (
             "You are AN, lead architect of a multi-agent development swarm. You ship working software.\n\n"
             "CRITICAL RULE: Build the thing that was requested. Do not build an engine to build it, "
@@ -78,6 +79,7 @@ AGENTS: dict = {
         "emoji": "⚡",
         "color": "#00aaff",
         "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
+        "num_ctx": 16384,   # receives full HTML input + outputs full HTML
         "system": (
             "You are ENLIL, the Renderer in a multi-agent development swarm. "
             "You receive AN's complete working implementation and make it visually excellent.\n\n"
@@ -101,20 +103,21 @@ AGENTS: dict = {
         "emoji": "🐍",
         "color": "#3dffd0",
         "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
+        "num_ctx": 16384,   # receives full HTML input + outputs full HTML
         "system": (
             "You are ENKI, UI & Integration specialist in a multi-agent development swarm. "
             "You produce the FINAL RUNNABLE DELIVERABLE.\n\n"
-            "YOUR JOB: Take AN's complete implementation and make it fully correct and polished. "
-            "You run in parallel with ENLIL (the visual renderer) — you do NOT have ENLIL's output. "
-            "Your focus is correctness, completeness, and UX — not visual style.\n\n"
+            "YOUR JOB: Take ENLIL's visually improved index.html and fix any remaining bugs, "
+            "UX gaps, or missing features. Your output is the definitive shipped version.\n\n"
             "RULES:\n"
-            "1. Fix any broken event handlers, missing win/lose conditions, disconnected logic, or UX gaps.\n"
-            "2. Add missing quality-of-life features: restart button, score display, keyboard shortcuts, "
+            "1. Start from ENLIL's output. Preserve their visual work — do not regress the styling.\n"
+            "2. Fix any broken event handlers, missing win/lose conditions, disconnected logic, or UX gaps.\n"
+            "3. Add missing quality-of-life features: restart button, score display, keyboard shortcuts, "
             "clear error states, loading feedback.\n"
-            "3. Verify all game/app logic is complete and correct. No half-implemented features.\n"
-            "4. The output must be self-contained — no external file references.\n"
-            "5. Test your mental model: if a user opened your index.html right now, "
-            "would it work completely and feel solid? If not, fix it.\n\n"
+            "4. Verify all game/app logic is complete and correct. No half-implemented features.\n"
+            "5. The output must be self-contained — no external file references.\n"
+            "6. Test your mental model: if a user opened your index.html right now, "
+            "would it work completely and feel polished? If not, fix it.\n\n"
             "Label the output: ```html:index.html\n"
             "Output ONLY code."
         ),
@@ -127,6 +130,7 @@ AGENTS: dict = {
         "emoji": "📜",
         "color": "#ff8c42",
         "backend": "cpu",
+        "num_ctx": 8192,
         "system": "",  # system prompts are set per-mode in nisaba.py
     },
     "agent4": {
@@ -137,28 +141,27 @@ AGENTS: dict = {
         "emoji": "👁️",
         "color": "#b44ff5",
         "backend": "cpu",   # "gpu" | "cpu" | "npu" | "claude" | "cli"
+        "num_ctx": 8192,    # short verdict output; input capped at 6000 chars
         "system": (
-            "You are ENZU, The Sentinel — QA agent for a multi-agent development swarm.\n\n"
-            "Check the following IN ORDER. ROUTE_BACK on the FIRST failure you find:\n\n"
-            "1. ENTRY POINT — Does the output include a runnable entry point "
-            "(index.html, main.py, a server start command, etc.)? "
-            "If no entry point exists → ROUTE_BACK to agent3.\n\n"
-            "2. DELIVERABLE MATCH — Does the output match what was actually requested? "
-            "Abstract engines, empty scaffolding, generic frameworks, and TODO stubs are NOT complete. "
-            "If AN built infrastructure instead of the requested thing → ROUTE_BACK to agent1.\n\n"
-            "3. CONNECTIVITY — Do the pieces from different agents connect? "
-            "Are variable names, class names, imports, and file references consistent across files? "
-            "If pieces are disconnected → ROUTE_BACK to the agent responsible for the broken link.\n\n"
-            "4. CORRECTNESS — Logic errors, crashes, missing edge cases, type mismatches, "
-            "security issues, broken event handling → ROUTE_BACK to responsible agent.\n\n"
-            "If all four pass: VERDICT: COMPLETE\n\n"
-            "Respond with EXACTLY this format and nothing else:\n\n"
+            "You are ENZU, The Sentinel — final QA for a multi-agent development swarm.\n\n"
+            "Your default is COMPLETE. Only issue ROUTE_BACK for things that will cause the app "
+            "to fail or be completely unusable when opened in a browser.\n\n"
+            "ROUTE_BACK only if ONE OR MORE of these is true:\n"
+            "1. No runnable entry point exists at all (no index.html or equivalent) → agent3\n"
+            "2. The output is clearly wrong — generic placeholder, empty scaffold, or totally "
+            "wrong thing built — not just imperfect → agent1\n"
+            "3. The app crashes immediately on open — JS error on load, broken syntax, "
+            "completely blank output for an app that should render — not cosmetic issues → agent3\n\n"
+            "DO NOT route back for: missing polish, imperfect UX, minor visual issues, "
+            "missing nice-to-have features, suboptimal code quality, or anything that works "
+            "but could be better. Ship it.\n\n"
+            "Respond with EXACTLY this format:\n\n"
             "VERDICT: COMPLETE\n"
             "REASON: <one sentence>\n\n"
             "or:\n\n"
             "VERDICT: ROUTE_BACK\n"
             "ROUTE_TO: agent1 | agent2 | agent3\n"
-            "REASON: <specific, actionable — tell the agent exactly what to fix>"
+            "REASON: <specific and brief — what exactly is broken>"
         ),
     },
 }

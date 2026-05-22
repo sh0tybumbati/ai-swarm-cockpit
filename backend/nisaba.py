@@ -42,11 +42,15 @@ SCRIBE_SYSTEM = (
 
 
 def _get_chroma() -> chromadb.ClientAPI:
-    STORE_PATH.mkdir(parents=True, exist_ok=True)
-    return chromadb.PersistentClient(
-        path=str(STORE_PATH),
-        settings=Settings(anonymized_telemetry=False),
-    )
+    return _CHROMA
+
+# Initialise once at import time (synchronous, before the event loop starts)
+# so it never blocks the asyncio event loop mid-run.
+STORE_PATH.mkdir(parents=True, exist_ok=True)
+_CHROMA = chromadb.PersistentClient(
+    path=str(STORE_PATH),
+    settings=Settings(anonymized_telemetry=False),
+)
 
 
 async def _embed(texts: List[str]) -> List[List[float]]:
@@ -127,11 +131,12 @@ async def index_files(project: str, files: List[Dict]) -> int:
         return 0
 
     embeddings = await _embed(docs)
-    # Upsert in batches of 100
     for start in range(0, len(docs), 100):
         sl = slice(start, start + 100)
-        coll.upsert(documents=docs[sl], ids=ids[sl],
-                    embeddings=embeddings[sl], metadatas=metas[sl])
+        await asyncio.to_thread(
+            coll.upsert, documents=docs[sl], ids=ids[sl],
+            embeddings=embeddings[sl], metadatas=metas[sl],
+        )
     logger.info("Nisaba indexed %d chunks for project %s", len(docs), project)
     return len(docs)
 
@@ -148,7 +153,9 @@ async def librarian_query(project: str, question: str, k: int = 5,
         return {"answer": f"[Nisaba] Collection error: {e}", "citations": [], "chunks": []}
 
     embeds = await _embed([question])
-    results = coll.query(query_embeddings=embeds, n_results=min(k, coll.count() or 1))
+    results = await asyncio.to_thread(
+        coll.query, query_embeddings=embeds, n_results=min(k, coll.count() or 1)
+    )
 
     chunks    = results.get("documents",  [[]])[0]
     metadatas = results.get("metadatas",  [[]])[0]
@@ -243,7 +250,8 @@ async def _index_feature(project: str, feature: str, scribed: Dict, saved_files:
         embeds = await _embed([text])
         import time
         fid = f"feature::{_safe(project)}::{int(time.time())}"
-        coll.upsert(
+        await asyncio.to_thread(
+            coll.upsert,
             documents=[text], ids=[fid], embeddings=embeds,
             metadatas=[{"source": "feature_history", "project": project,
                         "commit": scribed.get("commit", ""), "chunk": 0}],

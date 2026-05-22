@@ -25,6 +25,7 @@
         <div class="tps-meter">
           <div class="tps-readout"><span class="tps-val" id="tps-val-agent1">—</span><span class="tps-unit">t/s</span></div>
           <div class="tps-track"><div class="tps-fill" id="tps-fill-agent1"></div></div>
+          <div class="tps-stats">▲<span id="tps-top-agent1">—</span> ⌀<span id="tps-avg-agent1">—</span></div>
         </div>
         <div class="config-hint">⚙ CONFIGURE</div>
       </div>
@@ -79,6 +80,7 @@
         <div class="tps-meter">
           <div class="tps-readout"><span class="tps-val" id="tps-val-agent2">—</span><span class="tps-unit">t/s</span></div>
           <div class="tps-track"><div class="tps-fill" id="tps-fill-agent2"></div></div>
+          <div class="tps-stats">▲<span id="tps-top-agent2">—</span> ⌀<span id="tps-avg-agent2">—</span></div>
         </div>
         <div class="config-hint">⚙ CONFIGURE</div>
       </div>
@@ -115,6 +117,7 @@
         <div class="tps-meter">
           <div class="tps-readout"><span class="tps-val" id="tps-val-agent3">—</span><span class="tps-unit">t/s</span></div>
           <div class="tps-track"><div class="tps-fill" id="tps-fill-agent3"></div></div>
+          <div class="tps-stats">▲<span id="tps-top-agent3">—</span> ⌀<span id="tps-avg-agent3">—</span></div>
         </div>
         <div class="config-hint">⚙ CONFIGURE</div>
       </div>
@@ -146,6 +149,7 @@
         <div class="tps-meter">
           <div class="tps-readout"><span class="tps-val" id="tps-val-agent4">—</span><span class="tps-unit">t/s</span></div>
           <div class="tps-track"><div class="tps-fill" id="tps-fill-agent4"></div></div>
+          <div class="tps-stats">▲<span id="tps-top-agent4">—</span> ⌀<span id="tps-avg-agent4">—</span></div>
         </div>
         <div class="config-hint">⚙ CONFIGURE</div>
       </div>
@@ -157,6 +161,11 @@
         <span>𒁹 <span id="project-name">NO PROJECT</span></span>
         <span class="divider">│</span>
         <span class="loop-badge" id="loop-counter">LOOP: 0/12</span>
+        <span class="divider">│</span>
+        <span class="daemon-badges">
+          <span class="daemon-dot" id="daemon-gpu" title="GPU Ollama — localhost:11434">● GPU</span>
+          <span class="daemon-dot" id="daemon-cpu" title="CPU Ollama — localhost:11435 (click to start)" onclick="startCpuOllama()">● CPU</span>
+        </span>
       </div>
       <div class="cli-output" id="stream-console"></div>
     </div>

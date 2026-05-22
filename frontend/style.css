@@ -331,6 +331,15 @@ body {
 .a2 .tps-fill { background: var(--a2); box-shadow: 0 0 6px var(--a2); }
 .a3 .tps-fill { background: var(--a3); box-shadow: 0 0 6px var(--a3); }
 .a4 .tps-fill { background: var(--a4); box-shadow: 0 0 6px var(--a4); }
+.tps-stats {
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  gap: 6px;
+}
+.tps-stats span { font-weight: 600; opacity: 1; }
 .profile-block:hover .config-hint { opacity: 1; color: var(--gold); }
 
 /* ═══════════════════════════════════════════════════════
@@ -392,6 +401,19 @@ body {
   flex-shrink: 0;
   letter-spacing: 0.1em;
 }
+
+/* Daemon status badges */
+.daemon-badges { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.daemon-dot {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  opacity: 0.35;
+  transition: color 0.3s, opacity 0.3s;
+  white-space: nowrap;
+}
+.daemon-dot.online  { color: var(--cyan); opacity: 1; }
+.daemon-dot.offline { color: #ff4455;    opacity: 1; cursor: pointer; }
+.daemon-dot.starting{ color: var(--gold); opacity: 1; }
 
 /* Nisaba mode indicator */
 .nisaba-mode-badge {

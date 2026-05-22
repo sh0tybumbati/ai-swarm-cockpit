@@ -14,6 +14,7 @@ let loopRunning       = false;
 let autoRefresh       = false;
 const agentBackends   = {};      // per-agent backend state
 let modalBackend      = 'gpu';   // tracks selection inside modal
+const tpsData         = {};      // per-agent: {samples, peak}
 
 // ── Command history ────────────────────────────────────
 let cmdHistory  = JSON.parse(localStorage.getItem('swarm_cmd_history') || '[]');
@@ -51,9 +52,11 @@ function handleMsg(channel, msg) {
       appendTokens(channel, msg.content ?? '');
       break;
     case 'status':
-      if (channel !== 'console')
+      if (channel !== 'console') {
         setStatus(channel, msg.status,
           msg.status === 'WORKING' ? 'active' : msg.status === 'ERROR' ? 'error' : '');
+        if (msg.status === 'WORKING') resetTpsStats(channel);
+      }
       break;
     case 'loop_update':
       document.getElementById('loop-counter').textContent =
@@ -102,6 +105,14 @@ function updateNisabaMode(mode) {
   }
 }
 
+function resetTpsStats(agentId) {
+  tpsData[agentId] = { samples: [], peak: 0 };
+  const topEl = document.getElementById(`tps-top-${agentId}`);
+  const avgEl = document.getElementById(`tps-avg-${agentId}`);
+  if (topEl) topEl.textContent = '—';
+  if (avgEl) avgEl.textContent = '—';
+}
+
 function updateTps(agentId, value) {
   const valEl  = document.getElementById(`tps-val-${agentId}`);
   const fillEl = document.getElementById(`tps-fill-${agentId}`);
@@ -109,9 +120,22 @@ function updateTps(agentId, value) {
   if (value <= 0) {
     valEl.textContent = '—';
     fillEl.style.width = '0%';
-  } else {
-    valEl.textContent = value.toFixed(1);
-    fillEl.style.width = Math.min(100, (value / 80) * 100) + '%'; // 80 t/s = full bar
+    return;
+  }
+  valEl.textContent = value.toFixed(1);
+  fillEl.style.width = Math.min(100, (value / 80) * 100) + '%';
+
+  if (!tpsData[agentId]) tpsData[agentId] = { samples: [], peak: 0 };
+  const d = tpsData[agentId];
+  d.samples.push(value);
+  if (value > d.peak) d.peak = value;
+
+  const topEl = document.getElementById(`tps-top-${agentId}`);
+  const avgEl = document.getElementById(`tps-avg-${agentId}`);
+  if (topEl) topEl.textContent = d.peak.toFixed(1);
+  if (avgEl) {
+    const avg = d.samples.reduce((a, b) => a + b, 0) / d.samples.length;
+    avgEl.textContent = avg.toFixed(1);
   }
 }
 
@@ -818,6 +842,43 @@ sysLog('𒀭 AN  𒂗𒍪 ENLIL  𒂗𒆳 ENKI  𒂗𒍪 ENZU  𒀭𒇻 NISABA �
 // Check model availability on load, then every 60s
 checkModelStatus();
 setInterval(checkModelStatus, 60_000);
+
+// ── Daemon status badges ────────────────────────────────
+
+function _setDaemonDot(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'daemon-dot ' + state;
+}
+
+async function pollDaemons() {
+  try {
+    const data = await fetch(`${API_BASE}/services`).then(r => r.json());
+    _setDaemonDot('daemon-gpu', data.ollama?.online     ? 'online' : 'offline');
+    _setDaemonDot('daemon-cpu', data.cpu_ollama?.online ? 'online' : 'offline');
+  } catch {
+    _setDaemonDot('daemon-gpu', 'offline');
+    _setDaemonDot('daemon-cpu', 'offline');
+  }
+}
+
+async function startCpuOllama() {
+  const el = document.getElementById('daemon-cpu');
+  if (el?.classList.contains('starting')) return;  // already in progress
+  _setDaemonDot('daemon-cpu', 'starting');
+  try {
+    await fetch(`${API_BASE}/services/start-cpu`, { method: 'POST' });
+  } catch {}
+  // Poll a few times to pick up the new state
+  for (let i = 0; i < 5; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    await pollDaemons();
+    if (document.getElementById('daemon-cpu')?.classList.contains('online')) break;
+  }
+}
+
+pollDaemons();
+setInterval(pollDaemons, 15_000);
 
 // Load all agent backend states and model labels on startup
 fetch(`${API_BASE}/agents`)

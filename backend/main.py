@@ -6,6 +6,10 @@ Run: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 import asyncio
 import json
 import logging
+import os
+import shutil
+import subprocess
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
@@ -20,7 +24,64 @@ from orchestrator import (OUTPUT_BASE, SwarmOrchestrator,
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 logger = logging.getLogger("cockpit")
 
-app = FastAPI(title="Panoptic AI Swarm Cockpit", version="1.2.0")
+
+# ── CPU Ollama auto-start ──────────────────────────────────────────────────────
+
+async def _ensure_cpu_ollama() -> bool:
+    """Start CPU Ollama daemon if not already running.
+    Spawns as a detached process — survives backend restarts and --reload cycles."""
+    cpu_host = CPU_CONFIG["host"]
+
+    # Fast path: already running
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        try:
+            r = await client.get(f"{cpu_host}/api/tags")
+            if r.status_code == 200:
+                logger.info("CPU Ollama already running at %s", cpu_host)
+                return True
+        except Exception:
+            pass
+
+    ollama_bin = shutil.which("ollama")
+    if not ollama_bin:
+        logger.warning("CPU Ollama: 'ollama' binary not found in PATH — cannot auto-start")
+        return False
+
+    env = os.environ.copy()
+    env["OLLAMA_HOST"] = "127.0.0.1:11435"
+    env["OLLAMA_NUM_GPU"] = "0"
+
+    proc = subprocess.Popen(
+        [ollama_bin, "serve"],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,   # detach — survives uvicorn restarts
+    )
+    logger.info("CPU Ollama spawned (pid=%s) — detached, waiting for readiness…", proc.pid)
+
+    for _ in range(8):
+        await asyncio.sleep(1)
+        async with httpx.AsyncClient(timeout=1.0) as client:
+            try:
+                r = await client.get(f"{cpu_host}/api/tags")
+                if r.status_code == 200:
+                    logger.info("CPU Ollama online at %s", cpu_host)
+                    return True
+            except Exception:
+                pass
+
+    logger.warning("CPU Ollama did not respond within 8 s — it may still be loading models")
+    return False
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await _ensure_cpu_ollama()
+    yield
+
+
+app = FastAPI(title="Panoptic AI Swarm Cockpit", version="1.2.0", lifespan=lifespan)
 orchestrator = SwarmOrchestrator()
 
 FRONTEND = Path(__file__).parent.parent / "frontend"
@@ -286,6 +347,13 @@ async def services_status():
             "model": CLAUDE_CLI_CONFIG["model"],
         }
         return results
+
+
+@app.post("/services/start-cpu")
+async def start_cpu_ollama():
+    """Manually trigger CPU Ollama startup from the UI."""
+    online = await _ensure_cpu_ollama()
+    return {"online": online}
 
 
 @app.get("/health")
