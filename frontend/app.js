@@ -15,6 +15,9 @@ let autoRefresh       = false;
 const agentBackends   = {};      // per-agent backend state
 let modalBackend      = 'gpu';   // tracks selection inside modal
 const tpsData         = {};      // per-agent: {samples, peak}
+let awaitingReply     = false;   // true when an agent has paused and needs user input
+
+const agentDeity = { agent1: 'AN', agent2: 'ENLIL', agent3: 'ENKI', agent4: 'ENZU', agent5: 'NISABA' };
 
 // ── Command history ────────────────────────────────────
 let cmdHistory  = JSON.parse(localStorage.getItem('swarm_cmd_history') || '[]');
@@ -53,9 +56,19 @@ function handleMsg(channel, msg) {
       break;
     case 'status':
       if (channel !== 'console') {
-        setStatus(channel, msg.status,
-          msg.status === 'WORKING' ? 'active' : msg.status === 'ERROR' ? 'error' : '');
+        const cls = msg.status === 'WORKING' ? 'active'
+                  : msg.status === 'ERROR'   ? 'error'
+                  : msg.status === 'WAITING' ? 'waiting'
+                  : '';
+        setStatus(channel, msg.status, cls);
         if (msg.status === 'WORKING') resetTpsStats(channel);
+      }
+      break;
+    case 'waiting_for_input':
+      if (channel === 'console') {
+        awaitingReply = true;
+        const deity = agentDeity[msg.agent] || msg.agent || 'AGENT';
+        enterReplyMode(deity, msg.question || 'Your input is needed');
       }
       break;
     case 'loop_update':
@@ -208,9 +221,49 @@ function setLoopRunning(running) {
 async function stopLoop() {
   try {
     await fetch(`${API_BASE}/stop`, { method: 'POST' });
+    exitReplyMode();
     sysLog('[CMD] Stop signal sent', 'warn');
   } catch (err) {
     sysLog(`[CMD] Stop failed: ${err.message}`, 'error');
+  }
+}
+
+// ── Reply mode — triggered when an agent pauses with CLARIFY ───
+
+function enterReplyMode(deity, question) {
+  const input = document.getElementById('cmd-input');
+  const btn   = document.getElementById('send-btn');
+  input.placeholder = `[YOU → ${deity}] : ${question}`;
+  input.classList.add('reply-active');
+  btn.textContent = '↩ REPLY';
+  btn.disabled = false;
+  sysLog(`[⏸ ${deity}] ${question}`, 'warn');
+  input.focus();
+}
+
+function exitReplyMode() {
+  if (!awaitingReply) return;
+  awaitingReply = false;
+  const input = document.getElementById('cmd-input');
+  const btn   = document.getElementById('send-btn');
+  input.placeholder = '[YOU] : Broadcast to swarm... (↑↓ history)';
+  input.classList.remove('reply-active');
+  btn.textContent = '▶ SUBMIT';
+}
+
+async function sendReply() {
+  const answer = document.getElementById('cmd-input').value.trim();
+  document.getElementById('cmd-input').value = '';
+  exitReplyMode();
+  sysLog(`[YOU] ${answer || '(no answer — continuing)'}`, 'sys');
+  try {
+    await fetch(`${API_BASE}/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answer }),
+    });
+  } catch (err) {
+    sysLog(`[REPLY] Error: ${err.message}`, 'error');
   }
 }
 
@@ -313,6 +366,13 @@ window.addEventListener('message', (e) => {
 
 async function sendCommand(event) {
   if (event) event.preventDefault();
+
+  // If an agent is waiting for clarification, this is a reply, not a new broadcast
+  if (awaitingReply) {
+    await sendReply();
+    return;
+  }
+
   const prompt     = document.getElementById('cmd-input').value.trim();
   const project    = document.getElementById('project-input').value.trim() || currentProject;
   const maxLoops   = parseInt(document.getElementById('max-loops-input').value) || 6;

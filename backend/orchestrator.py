@@ -238,6 +238,7 @@ class SwarmOrchestrator(ConnectionManager):
     def __init__(self):
         super().__init__()
         self._active_task: Optional[asyncio.Task] = None
+        self._reply_queue: asyncio.Queue = asyncio.Queue()
 
     # ── Stop ──────────────────────────────────────────────────────────────────
 
@@ -248,10 +249,67 @@ class SwarmOrchestrator(ConnectionManager):
                 await self._active_task
             except asyncio.CancelledError:
                 pass
+        # Unblock any agent waiting for a user reply
+        while not self._reply_queue.empty():
+            self._reply_queue.get_nowait()
+        self._reply_queue.put_nowait("__CANCELLED__")
         for aid in ["agent1", "agent2", "agent3", "agent4", "agent5"]:
             await self.send_status(aid, "IDLE")
         await self.send_loop_state(False)
         await self.sys_log("[!] Loop aborted by user", "warn")
+
+    # ── Clarify: pause loop and ask user ──────────────────────────────────────
+
+    async def _pause_for_user(self, agent_id: str, question: str) -> str:
+        """Send a WAITING_FOR_INPUT signal, block until /reply provides an answer."""
+        deity = AGENTS[agent_id].get("deity", agent_id)
+        await self.send_status(agent_id, "WAITING")
+        await self._broadcast("console", {
+            "type": "waiting_for_input",
+            "agent": agent_id,
+            "question": question,
+        })
+        await self.sys_log(f"[{deity}] ⏸ {question}", "warn")
+        answer = await self._reply_queue.get()
+        await self.sys_log(f"[{deity}] ▶ Resuming")
+        return answer
+
+    async def _run_with_clarify(self, agent_id: str, messages: list) -> str:
+        """Run an agent; if it emits CLARIFY: <question>, pause for user input then re-run."""
+        output = await self._run_agent(agent_id, messages)
+        match = re.search(r"(?m)^CLARIFY:\s*(.+)$", output, re.IGNORECASE)
+        if not match:
+            return output
+        question   = match.group(1).strip()
+        clean      = output[:match.start()].rstrip()
+        answer     = await self._pause_for_user(agent_id, question)
+        followup   = messages + [
+            {"role": "assistant", "content": clean},
+            {"role": "user",      "content": f"User clarification: {answer}\n\nNow proceed."},
+        ]
+        return await self._run_agent(agent_id, followup)
+
+    def _read_project_snapshot(self, project: str) -> str:
+        """Read existing project files to give AN context before building."""
+        parts = []
+        ctx = load_context(project)
+        if ctx:
+            parts.append(f"## context.md\n{ctx[:2000]}")
+        proj_dir = OUTPUT_BASE / _safe_name(project)
+        if proj_dir.exists():
+            skip = {"context.md"}
+            candidates = sorted(
+                [f for f in proj_dir.iterdir()
+                 if f.is_file() and f.name not in skip and not f.name.startswith("session_")],
+                key=lambda f: f.stat().st_mtime, reverse=True,
+            )[:3]
+            for f in candidates:
+                try:
+                    text = f.read_text(encoding="utf-8", errors="ignore")
+                    parts.append(f"## {f.name}\n{text[:1500]}")
+                except Exception:
+                    pass
+        return "\n\n".join(parts)
 
     # ── Single agent run ───────────────────────────────────────────────────────
 
@@ -847,9 +905,21 @@ class SwarmOrchestrator(ConnectionManager):
                         {"role": "user", "content": f"ENZU feedback: {feedback['agent1']}. Fix these issues."},
                     ]
                 else:
-                    a1_msgs = [{"role": "user", "content": deploy_note + ctx_prefix + nisaba_ctx + feature_request}]
+                    # On the first iteration, prepend a project snapshot so AN can
+                    # read what already exists and optionally ask a CLARIFY question.
+                    preflight_block = ""
+                    if iteration == 1:
+                        snapshot = self._read_project_snapshot(project)
+                        if snapshot:
+                            preflight_block = (
+                                f"Existing project files:\n{snapshot}\n\n"
+                                "Review the above before building. If you have one critical "
+                                "clarifying question, output `CLARIFY: <question>`. "
+                                "Otherwise proceed directly to implementation.\n\n"
+                            )
+                    a1_msgs = [{"role": "user", "content": deploy_note + ctx_prefix + nisaba_ctx + preflight_block + feature_request}]
 
-                resp1 = await self._run_agent("agent1", a1_msgs)
+                resp1 = await self._run_with_clarify("agent1", a1_msgs)
                 last["agent1"] = all_out["agent1"] = resp1
                 saved = save_agent_output(project, "agent1", iteration, resp1)
                 all_saved.extend(f["file"] for f in saved)
@@ -898,7 +968,7 @@ class SwarmOrchestrator(ConnectionManager):
 
             if run2:
                 a2_note = f"\nENZU feedback: {feedback['agent2']}" if feedback.get("agent2") else ""
-                resp2 = await self._run_agent("agent2", [{"role": "user", "content": (
+                resp2 = await self._run_with_clarify("agent2", [{"role": "user", "content": (
                     f"Task: {feature_request}\n\n"
                     f"AN's implementation:\n```html\n{an_html}\n```\n\n"
                     f"Rewrite with dramatically better visual design. "
@@ -931,7 +1001,7 @@ class SwarmOrchestrator(ConnectionManager):
 
             if run3:
                 a3_note = f"\nENZU feedback: {feedback['agent3']}" if feedback.get("agent3") else ""
-                resp3 = await self._run_agent("agent3", [{"role": "user", "content": (
+                resp3 = await self._run_with_clarify("agent3", [{"role": "user", "content": (
                     f"Task: {feature_request}\n\n"
                     f"Current implementation:\n```html\n{enki_base}\n```\n\n"
                     f"Fix all bugs and UX gaps: missing win/lose conditions, broken events, "
@@ -952,7 +1022,7 @@ class SwarmOrchestrator(ConnectionManager):
             # Sending all three would overflow the 8K context window with HTML.
             final_output = resp3 or resp2 or resp1
             SENTINEL_MAX = 6000  # chars — leaves room for system prompt + thinking
-            sentinel_resp = await self._run_agent("agent4", [
+            sentinel_resp = await self._run_with_clarify("agent4", [
                 {"role": "user", "content": (
                     f"Feature request: {feature_request}\n\n"
                     f"Final implementation (from ENKI):\n{final_output[:SENTINEL_MAX]}"

@@ -68,7 +68,10 @@ AGENTS: dict = {
             "ROUTE: agent2,agent3\n"
             "Include agent2 so ENLIL can polish the visuals. Include agent3 so ENKI can do final integration. "
             "Use 'ROUTE: none' ONLY when the task requires no code (e.g. a pure text answer). "
-            "Never include agent4 in ROUTE."
+            "Never include agent4 in ROUTE.\n\n"
+            "CLARIFY RULE: If you have one critical question before you can build anything meaningful, "
+            "output `CLARIFY: <your question>` on its own line at the very end and stop. "
+            "Do not ask multiple questions. Do not CLARIFY if you can make a reasonable assumption."
         ),
     },
     "agent2": {
@@ -92,7 +95,9 @@ AGENTS: dict = {
             "A text tool needs clarity and readability. Never use WebGL/Three.js unless asked.\n"
             "3. Output a complete index.html — not just a CSS snippet.\n\n"
             "Label the output: ```html:index.html\n"
-            "Output ONLY code."
+            "Output ONLY code.\n\n"
+            "Exception: if the task is fundamentally ambiguous and you cannot proceed, "
+            "output `CLARIFY: <your question>` as your entire response."
         ),
     },
     "agent3": {
@@ -119,7 +124,9 @@ AGENTS: dict = {
             "6. Test your mental model: if a user opened your index.html right now, "
             "would it work completely and feel polished? If not, fix it.\n\n"
             "Label the output: ```html:index.html\n"
-            "Output ONLY code."
+            "Output ONLY code.\n\n"
+            "Exception: if the task is fundamentally ambiguous and you cannot proceed, "
+            "output `CLARIFY: <your question>` as your entire response."
         ),
     },
     "agent5": {
@@ -161,7 +168,9 @@ AGENTS: dict = {
             "or:\n\n"
             "VERDICT: ROUTE_BACK\n"
             "ROUTE_TO: agent1 | agent2 | agent3\n"
-            "REASON: <specific and brief — what exactly is broken>"
+            "REASON: <specific and brief — what exactly is broken>\n\n"
+            "CLARIFY RULE: If you genuinely cannot determine pass/fail without one specific piece "
+            "of information, output `CLARIFY: <your question>` instead of a VERDICT and stop."
         ),
     },
 }

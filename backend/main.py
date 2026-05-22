@@ -149,6 +149,14 @@ async def stop_loop():
     return {"status": "stopped"}
 
 
+@app.post("/reply")
+async def user_reply(payload: dict):
+    """Unblock an agent that issued CLARIFY: and is waiting for user input."""
+    answer = (payload.get("answer") or "").strip()
+    await orchestrator._reply_queue.put(answer)
+    return {"status": "reply received"}
+
+
 # ── Agent config & solo run ────────────────────────────────────────────────────
 
 @app.get("/agents")
