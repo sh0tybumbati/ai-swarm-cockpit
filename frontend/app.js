@@ -376,9 +376,10 @@ async function sendCommand(event) {
     return;
   }
 
-  const prompt   = document.getElementById('cmd-input').value.trim();
-  const project  = document.getElementById('project-input').value.trim() || currentProject;
-  const maxLoops = parseInt(document.getElementById('max-loops-input').value) || 6;
+  const prompt       = document.getElementById('cmd-input').value.trim();
+  const project      = document.getElementById('project-input').value.trim() || currentProject;
+  const maxLoops     = parseInt(document.getElementById('max-loops-input').value) || 6;
+  const projectRoot  = document.getElementById('project-root-input').value.trim() || null;
   if (!prompt) return;
 
   // If a loop is running, inject the message rather than starting a new run
@@ -416,7 +417,7 @@ async function sendCommand(event) {
     const res  = await fetch(`${API_BASE}/broadcast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, project, max_iterations: maxLoops })
+      body: JSON.stringify({ prompt, project, max_iterations: maxLoops, project_root: projectRoot })
     });
     const data = await res.json();
     sysLog(`[CMD] ${data.status || data.error}`);

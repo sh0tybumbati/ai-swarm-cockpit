@@ -544,6 +544,22 @@ body {
 #project-input { width: 150px; font-size: 12px; }
 #project-input:focus { border-color: var(--cyan); }
 
+.cmd-row3 {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+#project-root-input {
+  flex: 1;
+  font-size: 11px;
+  opacity: .75;
+}
+#project-root-input:focus {
+  border-color: var(--cyan);
+  opacity: 1;
+}
+
 .loop-label { font-size: 10px; opacity: .5; letter-spacing: .1em; white-space: nowrap; }
 #max-loops-input {
   width: 46px; font-size: 12px; text-align: center;

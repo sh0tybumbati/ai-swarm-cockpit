@@ -45,6 +45,24 @@ LANG_EXT: Dict[str, str] = {
     "": "js",
 }
 
+# Pre-flight snapshot helpers
+_STOPWORDS: set = {
+    "the", "and", "for", "with", "this", "that", "from", "are", "can",
+    "add", "new", "use", "make", "get", "set", "put", "has", "not",
+    "all", "its", "one", "but", "our", "was", "had", "have", "will",
+    "into", "also", "just", "more", "some", "when", "than", "please",
+    "should", "would", "could", "need", "want", "like", "task",
+    "implement", "create", "build", "write", "change", "update", "fix",
+}
+_TEXT_EXTS: set = {
+    ".js", ".ts", ".html", ".css", ".py", ".json",
+    ".md", ".txt", ".yaml", ".yml", ".toml",
+}
+_SKIP_DIRS: set = {
+    "node_modules", ".git", "__pycache__", ".venv",
+    "dist", "build", ".beads",
+}
+
 AGENT_FILE_PREFIX = {
     "agent1": "architect",
     "agent2": "renderer",
@@ -58,6 +76,11 @@ AGENT_FILE_PREFIX = {
 
 def _safe_name(project: str) -> str:
     return re.sub(r"[^\w\-]", "_", project).lower().strip("_") or "project"
+
+
+def _strip_thinking(text: str) -> str:
+    """Remove <think>...</think> blocks from qwen3/r1 thinking model output."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 def extract_code_blocks(text: str) -> List[Dict]:
@@ -75,28 +98,41 @@ def extract_code_blocks(text: str) -> List[Dict]:
     return blocks
 
 
-def save_agent_output(project: str, agent_id: str, iteration: int, text: str) -> List[Dict]:
+def save_agent_output(project: str, agent_id: str, iteration: int, text: str,
+                      root_dir: Path = None) -> List[Dict]:
     blocks = extract_code_blocks(text)
     if not blocks:
         return []
     prefix   = AGENT_FILE_PREFIX.get(agent_id, agent_id)
-    proj_dir = OUTPUT_BASE / _safe_name(project)
+    proj_dir = root_dir if root_dir else OUTPUT_BASE / _safe_name(project)
     proj_dir.mkdir(parents=True, exist_ok=True)
+    proj_dir_resolved = proj_dir.resolve()
     saved = []
     seen: set = set()
     for i, block in enumerate(blocks):
         if block.get("filename"):
-            filename = block["filename"]
+            raw_path = block["filename"]
+            target = (proj_dir / raw_path).resolve()
+            # Security: reject path traversal attempts
+            try:
+                target.relative_to(proj_dir_resolved)
+            except ValueError:
+                logger.warning("Skipping path traversal attempt: %s", raw_path)
+                continue
+            rel = raw_path
         else:
-            suffix   = f"_{i + 1}" if len(blocks) > 1 else ""
-            filename = f"{prefix}{suffix}.{block['ext']}"
+            suffix = f"_{i + 1}" if len(blocks) > 1 else ""
+            rel    = f"{prefix}{suffix}.{block['ext']}"
+            target = proj_dir / rel
         # Deduplicate within one agent's output
-        if filename in seen:
-            base, _, ext = filename.rpartition(".")
-            filename = f"{base}_{i + 1}.{ext}"
-        seen.add(filename)
-        (proj_dir / filename).write_text(block["code"], encoding="utf-8")
-        saved.append({"file": filename, "size": len(block["code"]), "lang": block["lang"], "agent": agent_id})
+        if rel in seen:
+            base, _, ext = rel.rpartition(".")
+            rel    = f"{base}_{i + 1}.{ext}"
+            target = (proj_dir / rel).resolve()
+        seen.add(rel)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(block["code"], encoding="utf-8")
+        saved.append({"file": rel, "size": len(block["code"]), "lang": block["lang"], "agent": agent_id})
     return saved
 
 
@@ -294,26 +330,68 @@ class SwarmOrchestrator(ConnectionManager):
         ]
         return await self._run_with_clarify(agent_id, followup, _depth + 1)
 
-    def _read_project_snapshot(self, project: str) -> str:
-        """Read existing project files to give AN context before building."""
-        parts = []
+    def _read_project_snapshot(self, project: str, feature_request: str = "",
+                               project_root: str = None) -> str:
+        """Read project files relevant to the feature request — keyword-scored."""
+        parts: List[str] = []
+
+        # swarm's context.md (always)
         ctx = load_context(project)
         if ctx:
             parts.append(f"## context.md\n{ctx[:2000]}")
-        proj_dir = OUTPUT_BASE / _safe_name(project)
-        if proj_dir.exists():
-            skip = {"context.md"}
-            candidates = sorted(
-                [f for f in proj_dir.iterdir()
-                 if f.is_file() and f.name not in skip and not f.name.startswith("session_")],
-                key=lambda f: f.stat().st_mtime, reverse=True,
-            )[:3]
-            for f in candidates:
-                try:
-                    text = f.read_text(encoding="utf-8", errors="ignore")
-                    parts.append(f"## {f.name}\n{text[:1500]}")
-                except Exception:
-                    pass
+
+        # design/agent docs from real project root
+        search_dir = Path(project_root) if project_root else OUTPUT_BASE / _safe_name(project)
+        if project_root:
+            for fname in ("CLAUDE.md", "AGENTS.md", "GDD.md", "README.md"):
+                fp = Path(project_root) / fname
+                if fp.exists():
+                    text = fp.read_text(encoding="utf-8", errors="ignore")
+                    parts.append(f"## {fname}\n{text[:1500]}")
+
+        if not search_dir.exists():
+            return "\n\n".join(parts)
+
+        # Extract keywords from the feature request for scoring
+        keywords = {
+            w for w in re.findall(r"\b\w{3,}\b", feature_request.lower())
+            if w not in _STOPWORDS
+        }
+
+        # Collect and score candidate files
+        candidates: List[tuple] = []
+        for f in search_dir.rglob("*"):
+            if not f.is_file():
+                continue
+            rel_parts = f.relative_to(search_dir).parts
+            if any(p.startswith(".") or p in _SKIP_DIRS for p in rel_parts):
+                continue
+            if f.name.startswith("session_") and not project_root:
+                continue  # skip swarm session logs in output dir
+            if f.suffix.lower() not in _TEXT_EXTS:
+                continue
+            path_str = "/".join(str(p).lower() for p in rel_parts)
+            stem     = f.stem.lower()
+            score    = sum(2 if kw in stem else 1 for kw in keywords if kw in path_str)
+            candidates.append((score, f.stat().st_mtime, f))
+
+        candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+
+        budget = 8000
+        used   = sum(len(p) for p in parts)
+        for _score, _mtime, f in candidates[:30]:
+            try:
+                rel     = f.relative_to(search_dir)
+                text    = f.read_text(encoding="utf-8", errors="ignore")
+                snippet = text[:1500]
+                chunk   = f"## {rel}\n{snippet}"
+                if used + len(chunk) > budget:
+                    break
+                parts.append(chunk)
+                used += len(chunk)
+            except Exception:
+                pass
+
         return "\n\n".join(parts)
 
     # ── Single agent run ───────────────────────────────────────────────────────
@@ -833,11 +911,18 @@ class SwarmOrchestrator(ConnectionManager):
 
     # ── Main swarm loop ────────────────────────────────────────────────────────
 
-    async def _swarm_loop_inner(self, feature_request: str, project: str, max_iterations: int = MAX_ITERATIONS):
+    async def _swarm_loop_inner(self, feature_request: str, project: str,
+                                max_iterations: int = MAX_ITERATIONS,
+                                project_root: str = None):
+        root_dir = Path(project_root).resolve() if project_root else None
+        proj_dir = root_dir if root_dir else OUTPUT_BASE / _safe_name(project)
+
         await self._broadcast("console", {"type": "project", "name": project})
         await self.send_loop_state(True)
         await self.sys_log(f"══ SWARM START: {project} ══")
         await self.sys_log(f"Feature: {feature_request}")
+        if project_root:
+            await self.sys_log(f"[ROOT] {project_root}", "info")
 
         for aid in ["agent1", "agent2", "agent3", "agent4"]:
             await self._broadcast(aid, {"type": "clear"})
@@ -883,12 +968,23 @@ class SwarmOrchestrator(ConnectionManager):
                     logger.warning("Nisaba librarian failed: %s", e)
                     await self.send_status("agent5", "IDLE")
 
-            # Deployment context always injected so AN knows where output lands
-            deploy_note = (
-                "DEPLOYMENT TARGET: Output is previewed in a browser iframe. "
-                "Produce a complete self-contained index.html (CSS in <style>, JS in <script>). "
-                "Do not use TypeScript, npm, or build tools unless explicitly requested.\n\n"
-            )
+            # Deployment context injected so AN knows the target environment
+            if project_root:
+                deploy_note = (
+                    f"DEPLOYMENT TARGET: Existing project at {project_root}. "
+                    "This is a MULTI-FILE project — DO NOT produce a single self-contained index.html. "
+                    "Instead, produce targeted edits to only the files that need to change. "
+                    "Label every code block with its full relative path from the project root "
+                    "(e.g. ```js:js/content/items/newitem.js). "
+                    "Only output files that are new or modified — never rewrite unchanged files. "
+                    "ROUTE: agent3 for integration review, or ROUTE: none if your output is self-contained.\n\n"
+                )
+            else:
+                deploy_note = (
+                    "DEPLOYMENT TARGET: Output is previewed in a browser iframe. "
+                    "Produce a complete self-contained index.html (CSS in <style>, JS in <script>). "
+                    "Do not use TypeScript, npm, or build tools unless explicitly requested.\n\n"
+                )
 
             # Which agent did ENZU target? Controls which earlier agents we skip.
             reroute_to = next(iter(feedback), None)  # "agent1", "agent2", "agent3", or None
@@ -910,8 +1006,6 @@ class SwarmOrchestrator(ConnectionManager):
                 )
 
             # ── AN: App Architect ─────────────────────────────────────────────
-            proj_dir = OUTPUT_BASE / _safe_name(project)
-
             if reroute_to in ("agent2", "agent3") and last.get("agent1"):
                 # ENZU routed to a downstream agent — skip AN, reuse last output
                 resp1 = last["agent1"]
@@ -930,7 +1024,9 @@ class SwarmOrchestrator(ConnectionManager):
                     # read what already exists and optionally ask a CLARIFY question.
                     preflight_block = ""
                     if iteration == 1:
-                        snapshot = self._read_project_snapshot(project)
+                        snapshot = self._read_project_snapshot(
+                            project, feature_request, project_root
+                        )
                         if snapshot:
                             preflight_block = (
                                 f"Existing project files:\n{snapshot}\n\n"
@@ -942,7 +1038,7 @@ class SwarmOrchestrator(ConnectionManager):
 
                 resp1 = await self._run_with_clarify("agent1", a1_msgs)
                 last["agent1"] = all_out["agent1"] = resp1
-                saved = save_agent_output(project, "agent1", iteration, resp1)
+                saved = save_agent_output(project, "agent1", iteration, resp1, root_dir)
                 all_saved.extend(f["file"] for f in saved)
                 if saved: await self.notify_files(saved)
 
@@ -961,7 +1057,8 @@ class SwarmOrchestrator(ConnectionManager):
                 if deliverable["files"] else ""
             )
 
-            # Read the HTML file AN saved — base for ENLIL/ENKI
+            # Read the primary output file AN saved — base for ENLIL/ENKI
+            # Strip thinking tokens so they don't pollute downstream context
             an_html = ""
             for s in saved:
                 if s["file"].endswith(".html"):
@@ -970,9 +1067,8 @@ class SwarmOrchestrator(ConnectionManager):
                         an_html = fp.read_text(encoding="utf-8")
                         break
             if not an_html:
-                # Fall back to last saved index.html on disk (skip case)
                 fallback = proj_dir / "index.html"
-                an_html = fallback.read_text(encoding="utf-8") if fallback.exists() else resp1
+                an_html = fallback.read_text(encoding="utf-8") if fallback.exists() else _strip_thinking(resp1)
 
             # ── ENLIL: visual polish, from AN's base ──────────────────────────
             resp2, resp3 = "", ""
@@ -989,15 +1085,25 @@ class SwarmOrchestrator(ConnectionManager):
 
             if run2:
                 a2_note = f"\nENZU feedback: {feedback['agent2']}" if feedback.get("agent2") else ""
-                resp2 = await self._run_with_clarify("agent2", [{"role": "user", "content": (
-                    f"Task: {feature_request}\n\n"
-                    f"AN's implementation:\n```html\n{an_html}\n```\n\n"
-                    f"Rewrite with dramatically better visual design. "
-                    f"Preserve ALL JS logic and DOM element IDs exactly — only improve CSS and layout. "
-                    f"Output the complete index.html.{a2_note}"
-                )}])
+                if project_root:
+                    a2_content = (
+                        f"Task: {feature_request}\n\n"
+                        f"AN's implementation:\n{_strip_thinking(resp1)[:MAX_CTX_CHARS]}\n\n"
+                        f"Review and improve these file changes. Preserve all logic; "
+                        f"focus on visual polish, readability, and CSS improvements. "
+                        f"Output only files you change, with full relative paths.{a2_note}"
+                    )
+                else:
+                    a2_content = (
+                        f"Task: {feature_request}\n\n"
+                        f"AN's implementation:\n```html\n{an_html}\n```\n\n"
+                        f"Rewrite with dramatically better visual design. "
+                        f"Preserve ALL JS logic and DOM element IDs exactly — only improve CSS and layout. "
+                        f"Output the complete index.html.{a2_note}"
+                    )
+                resp2 = await self._run_with_clarify("agent2", [{"role": "user", "content": a2_content}])
                 last["agent2"] = all_out["agent2"] = resp2
-                saved2 = save_agent_output(project, "agent2", iteration, resp2)
+                saved2 = save_agent_output(project, "agent2", iteration, resp2, root_dir)
                 all_saved.extend(f["file"] for f in saved2)
                 if saved2: await self.notify_files(saved2)
             else:
@@ -1022,16 +1128,26 @@ class SwarmOrchestrator(ConnectionManager):
 
             if run3:
                 a3_note = f"\nENZU feedback: {feedback['agent3']}" if feedback.get("agent3") else ""
-                resp3 = await self._run_with_clarify("agent3", [{"role": "user", "content": (
-                    f"Task: {feature_request}\n\n"
-                    f"Current implementation:\n```html\n{enki_base}\n```\n\n"
-                    f"Fix all bugs and UX gaps: missing win/lose conditions, broken events, "
-                    f"missing restart button, score display. "
-                    f"Preserve the visual styling. "
-                    f"Output the complete, fully working index.html.{a3_note}"
-                )}])
+                if project_root:
+                    a3_content = (
+                        f"Task: {feature_request}\n\n"
+                        f"Implementation so far:\n{_strip_thinking(enki_base)[:MAX_CTX_CHARS]}\n\n"
+                        f"Review for integration correctness: check imports, exports, naming consistency, "
+                        f"and compatibility with the existing project. Fix any issues. "
+                        f"Output only files that need changes, with full relative paths.{a3_note}"
+                    )
+                else:
+                    a3_content = (
+                        f"Task: {feature_request}\n\n"
+                        f"Current implementation:\n```html\n{enki_base}\n```\n\n"
+                        f"Fix all bugs and UX gaps: missing win/lose conditions, broken events, "
+                        f"missing restart button, score display. "
+                        f"Preserve the visual styling. "
+                        f"Output the complete, fully working index.html.{a3_note}"
+                    )
+                resp3 = await self._run_with_clarify("agent3", [{"role": "user", "content": a3_content}])
                 last["agent3"] = all_out["agent3"] = resp3
-                saved3 = save_agent_output(project, "agent3", iteration, resp3)
+                saved3 = save_agent_output(project, "agent3", iteration, resp3, root_dir)
                 all_saved.extend(f["file"] for f in saved3)
                 if saved3: await self.notify_files(saved3)
             else:
@@ -1043,10 +1159,11 @@ class SwarmOrchestrator(ConnectionManager):
             # Sending all three would overflow the 8K context window with HTML.
             final_output = resp3 or resp2 or resp1
             SENTINEL_MAX = 6000  # chars — leaves room for system prompt + thinking
+            final_author = "ENKI" if resp3 else ("ENLIL" if resp2 else "AN")
             sentinel_resp = await self._run_with_clarify("agent4", [
                 {"role": "user", "content": (
                     f"Feature request: {feature_request}\n\n"
-                    f"Final implementation (from ENKI):\n{final_output[:SENTINEL_MAX]}"
+                    f"Final implementation (from {final_author}):\n{final_output[:SENTINEL_MAX]}"
                 )}
             ])
             all_out["agent4"] = sentinel_resp
@@ -1095,10 +1212,10 @@ class SwarmOrchestrator(ConnectionManager):
                             f"└ Tags: {', '.join(result.get('tags',[]))}\n"
                         )
                         # Index generated output files for future librarian queries
-                        proj_dir = OUTPUT_BASE / _safe_name(project)
+                        _idx_dir = root_dir if root_dir else OUTPUT_BASE / _safe_name(project)
                         file_records = [
-                            {"name": fn, "path": str(proj_dir / fn)}
-                            for fn in dict.fromkeys(all_saved) if (proj_dir / fn).exists()
+                            {"name": fn, "path": str(_idx_dir / fn)}
+                            for fn in dict.fromkeys(all_saved) if (_idx_dir / fn).exists()
                         ]
                         indexed = await _nisaba.index_files(project, file_records)
                         if indexed:
@@ -1126,9 +1243,11 @@ class SwarmOrchestrator(ConnectionManager):
             await self.send_status(aid, "IDLE")
         await self.send_loop_state(False)
 
-    async def run_swarm_loop(self, feature_request: str, project: str, max_iterations: int = MAX_ITERATIONS):
+    async def run_swarm_loop(self, feature_request: str, project: str,
+                             max_iterations: int = MAX_ITERATIONS,
+                             project_root: str = None):
         try:
-            await self._swarm_loop_inner(feature_request, project, max_iterations)
+            await self._swarm_loop_inner(feature_request, project, max_iterations, project_root)
         except asyncio.CancelledError:
             await self.sys_log("[!] Swarm loop cancelled", "warn")
             for aid in ["agent1", "agent2", "agent3", "agent4", "agent5"]:

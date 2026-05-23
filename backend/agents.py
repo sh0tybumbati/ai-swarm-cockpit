@@ -34,12 +34,12 @@ CLAUDE_CLI_CONFIG: dict = {
 AGENTS: dict = {
     "agent1": {
         "name": "App Architect",
-        "model": "qwen3-coder:30b-a3b-q4_K_M",
+        "model": "claude-opus-4-7",
         "role": "app_architect",
         "deity": "AN",
         "emoji": "🦅",
         "color": "#e8b800",
-        "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
+        "backend": "claude",   # "gpu" | "npu" | "claude" | "cli"
         "num_ctx": 32768,   # largest — generates full apps with thinking tokens
         "system": (
             "You are AN, lead architect of a multi-agent development swarm. You ship working software.\n\n"
@@ -76,13 +76,13 @@ AGENTS: dict = {
     },
     "agent2": {
         "name": "The Renderer",
-        "model": "qwen2.5-coder:14b-instruct",
+        "model": "qwen3-coder:30b-a3b-q4_K_M",
         "role": "renderer",
         "deity": "ENLIL",
         "emoji": "⚡",
         "color": "#00aaff",
         "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
-        "num_ctx": 16384,   # receives full HTML input + outputs full HTML
+        "num_ctx": 32768,   # upgraded to 30B — receives full implementation + outputs improved version
         "system": (
             "You are ENLIL, the Renderer in a multi-agent development swarm. "
             "You receive AN's complete working implementation and make it visually excellent.\n\n"
@@ -102,13 +102,13 @@ AGENTS: dict = {
     },
     "agent3": {
         "name": "UI & Integration",
-        "model": "qwen2.5-coder:14b-instruct",
+        "model": "qwen3-coder:30b-a3b-q4_K_M",
         "role": "ui_integration",
         "deity": "ENKI",
         "emoji": "🐍",
         "color": "#3dffd0",
         "backend": "gpu",   # "gpu" | "npu" | "claude" | "cli"
-        "num_ctx": 16384,   # receives full HTML input + outputs full HTML
+        "num_ctx": 32768,   # upgraded to 30B — receives full implementation + outputs final version
         "system": (
             "You are ENKI, UI & Integration specialist in a multi-agent development swarm. "
             "You produce the FINAL RUNNABLE DELIVERABLE.\n\n"

@@ -133,12 +133,18 @@ async def ws_endpoint(websocket: WebSocket, channel: str):
 
 @app.post("/broadcast")
 async def broadcast(payload: dict):
-    prompt      = (payload.get("prompt") or "").strip()
-    project     = (payload.get("project") or "New Project").strip()
-    max_iters   = int(payload.get("max_iterations") or 12)
+    prompt       = (payload.get("prompt") or "").strip()
+    project      = (payload.get("project") or "New Project").strip()
+    max_iters    = int(payload.get("max_iterations") or 12)
+    project_root = (payload.get("project_root") or "").strip() or None
     if not prompt:
         return JSONResponse({"error": "prompt is required"}, status_code=400)
-    task = asyncio.create_task(orchestrator.run_swarm_loop(prompt, project, max_iters))
+    # Validate project_root exists if provided
+    if project_root:
+        from pathlib import Path as _P
+        if not _P(project_root).is_dir():
+            return JSONResponse({"error": f"project_root not found: {project_root}"}, status_code=400)
+    task = asyncio.create_task(orchestrator.run_swarm_loop(prompt, project, max_iters, project_root))
     orchestrator._active_task = task
     return {"status": f"Swarm loop initiated: {prompt[:60]}"}
 
