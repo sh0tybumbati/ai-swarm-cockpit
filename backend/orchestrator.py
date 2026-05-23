@@ -278,20 +278,21 @@ class SwarmOrchestrator(ConnectionManager):
         await self.sys_log(f"[{deity}] ▶ Resuming")
         return answer
 
-    async def _run_with_clarify(self, agent_id: str, messages: list) -> str:
-        """Run an agent; if it emits CLARIFY: <question>, pause for user input then re-run."""
+    async def _run_with_clarify(self, agent_id: str, messages: list, _depth: int = 0) -> str:
+        """Run an agent; if it emits CLARIFY: <question>, pause for user input then re-run.
+        Recurses so multiple clarifications are each handled before moving on."""
         output = await self._run_agent(agent_id, messages)
         match = re.search(r"(?m)^CLARIFY:\s*(.+)$", output, re.IGNORECASE)
-        if not match:
+        if not match or _depth >= 3:   # hard cap: max 3 clarifications per agent per step
             return output
-        question   = match.group(1).strip()
-        clean      = output[:match.start()].rstrip()
-        answer     = await self._pause_for_user(agent_id, question)
-        followup   = messages + [
+        question = match.group(1).strip()
+        clean    = output[:match.start()].rstrip()
+        answer   = await self._pause_for_user(agent_id, question)
+        followup = messages + [
             {"role": "assistant", "content": clean},
             {"role": "user",      "content": f"User clarification: {answer}\n\nNow proceed."},
         ]
-        return await self._run_agent(agent_id, followup)
+        return await self._run_with_clarify(agent_id, followup, _depth + 1)
 
     def _read_project_snapshot(self, project: str) -> str:
         """Read existing project files to give AN context before building."""
